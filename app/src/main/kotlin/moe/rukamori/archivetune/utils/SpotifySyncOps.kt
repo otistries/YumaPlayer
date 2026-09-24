@@ -29,6 +29,7 @@ import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
+import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import timber.log.Timber
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicBoolean
@@ -80,6 +81,17 @@ class SpotifySyncOps
                             }
                         }
                     }
+
+                    val keepOfflineSnapshot =
+                        runCatching {
+                            state.database.keepOfflinePlaylists().first().associate { playlist ->
+                                playlist.id to
+                                    state.database.playlistSongs(playlist.id).first().map { it.song.id }.toSet()
+                            }
+                        }.getOrElse { e ->
+                            Timber.w(e, "Failed to snapshot keep-offline playlists before sync")
+                            emptyMap()
+                        }
 
                     val resolveSemaphore = Semaphore(4)
 
@@ -173,6 +185,34 @@ class SpotifySyncOps
                         } catch (e: Exception) {
                             Timber.e(e, "Failed to sync Spotify playlist ${playlist.name}")
                         }
+                    }
+
+                    runCatching {
+                        if (keepOfflineSnapshot.isEmpty()) return@runCatching
+                        val afterIdsByPlaylist =
+                            state.database.keepOfflinePlaylists().first().associate { playlist ->
+                                playlist.id to
+                                    state.database.playlistSongs(playlist.id).first().map { it.song.id }.toSet()
+                            }
+                        val songIdsInAnyPlaylist = state.database.playlistSongIds().toSet()
+                        val likedSongIds =
+                            state.database.likedSongsByRowIdAscUnion().first().map { it.song.id }.toSet()
+                        val orphanIds =
+                            OfflineSyncLogic.orphanedDownloadIds(
+                                beforeIdsByPlaylist = keepOfflineSnapshot,
+                                afterIdsByPlaylist = afterIdsByPlaylist,
+                                songIdsInAnyPlaylist = songIdsInAnyPlaylist,
+                                likedSongIds = likedSongIds,
+                            )
+                        if (orphanIds.isNotEmpty()) {
+                            Timber.i("Removing %d orphaned keep-offline downloads after Spotify sync", orphanIds.size)
+                            sendRemoveDownloads(
+                                context = state.context,
+                                songIds = orphanIds.toList(),
+                            )
+                        }
+                    }.onFailure {
+                        Timber.w(it, "Failed to clean up orphaned keep-offline downloads after Spotify sync")
                     }
                 } catch (e: Exception) {
                     Timber.e(e, "Error during syncSpotifyPlaylists")

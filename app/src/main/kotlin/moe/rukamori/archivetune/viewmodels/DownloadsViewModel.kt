@@ -14,16 +14,19 @@ import androidx.media3.exoplayer.offline.DownloadService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.playback.ExoDownloadService
+import moe.rukamori.archivetune.utils.PlaylistOfflineStatus
 import javax.inject.Inject
 
 enum class DownloadQueueFilter {
@@ -112,6 +115,25 @@ class DownloadsViewModel
                     )
             }.flowOn(Dispatchers.IO)
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        val playlistStatuses: Flow<List<PlaylistOfflineStatus>> =
+            combine(
+                database.keepOfflinePlaylists(),
+                downloadUtil.downloads,
+            ) { playlists, downloads ->
+                playlists
+                    .map { playlist ->
+                        PlaylistOfflineStatus.compute(
+                            songIds = database.playlistSongs(playlist.id).first().map { it.song.id },
+                            downloads = downloads.mapValues { it.value.state },
+                            name = playlist.playlist.name,
+                            playlistId = playlist.id,
+                        )
+                    }.sortedWith(
+                        compareBy<PlaylistOfflineStatus> { it.isFullyOffline }
+                            .thenByDescending { it.completeness },
+                    )
+            }.flowOn(Dispatchers.IO)
 
         fun retry(item: DownloadQueueItem) {
             val download = downloadUtil.downloads.value[item.songId] ?: return

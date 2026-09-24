@@ -9,6 +9,7 @@
 package moe.rukamori.archivetune.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -49,6 +51,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.utils.PlaylistOfflineStatus
 import moe.rukamori.archivetune.viewmodels.DownloadQueueFilter
 import moe.rukamori.archivetune.viewmodels.DownloadQueueItem
 import moe.rukamori.archivetune.viewmodels.DownloadsViewModel
@@ -61,6 +64,7 @@ fun DownloadsScreen(
 ) {
     val items by viewModel.items.collectAsStateWithLifecycle()
     val filter by viewModel.filter.collectAsStateWithLifecycle()
+    val playlistStatuses by viewModel.playlistStatuses.collectAsStateWithLifecycle(initialValue = emptyList())
 
     val failedCount = items.count { it.isFailed }
     val hasActive = items.any { it.isActive }
@@ -123,6 +127,24 @@ fun DownloadsScreen(
                 }
             },
         )
+
+        if (playlistStatuses.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.offline_playlists_section),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            playlistStatuses.forEach { status ->
+                PlaylistOfflineRow(
+                    status = status,
+                    onClick = { navController.navigate("local_playlist/${status.playlistId}") },
+                )
+            }
+        }
 
         Row(
             modifier =
@@ -269,6 +291,82 @@ private fun DownloadQueueRow(
                 contentDescription = stringResource(R.string.remove_download),
             )
         }
+    }
+}
+
+@Composable
+private fun PlaylistOfflineRow(
+    status: PlaylistOfflineStatus,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+        ) {
+            Text(
+                text = status.name,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text =
+                    when {
+                        status.isFullyOffline -> stringResource(R.string.offline_playlist_fully_offline)
+                        status.failed > 0 ->
+                            stringResource(R.string.offline_playlist_failures, status.failed)
+                        else ->
+                            stringResource(
+                                R.string.offline_playlist_progress,
+                                status.downloaded,
+                                status.total,
+                            )
+                    },
+                style = MaterialTheme.typography.bodySmall,
+                color =
+                    when {
+                        status.isFullyOffline -> MaterialTheme.colorScheme.primary
+                        status.failed > 0 -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!status.isFullyOffline && status.total > 0) {
+                LinearProgressIndicator(
+                    progress = { status.completeness },
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                )
+            }
+        }
+        Icon(
+            painter =
+                painterResource(
+                    when {
+                        status.isFullyOffline -> R.drawable.check
+                        status.failed > 0 -> R.drawable.error
+                        else -> R.drawable.download
+                    },
+                ),
+            contentDescription = null,
+            tint =
+                when {
+                    status.isFullyOffline -> MaterialTheme.colorScheme.primary
+                    status.failed > 0 -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+        )
     }
 }
 
