@@ -92,11 +92,14 @@ import coil3.toBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.spotify.SpotifyMapper
@@ -110,10 +113,22 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.resize
+import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
+import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
+import kotlinx.coroutines.Semaphore
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.sync.withPermit
+import java.time.LocalDateTime
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,6 +141,8 @@ fun SpotifyPlaylistScreen(
     val context = LocalContext.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val playerConnection = LocalPlayerConnection.current
+    val database = LocalDatabase.current
+    val downloadUtil = LocalDownloadUtil.current
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by playerConnection?.isPlaying?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(false) }
@@ -398,6 +415,50 @@ fun SpotifyPlaylistScreen(
             if (!isSearching) {
                 playlist?.let { currentPlaylist ->
                     item(key = "header") {
+                        val localPlaylist by
+                            remember(currentPlaylist.id) {
+                                database.playlistBySpotifyId(currentPlaylist.id)
+                            }.collectAsStateWithLifecycle(initialValue = null)
+                        val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
+                        var resolvedSongs by
+                            remember(currentPlaylist.id) { mutableStateOf<List<HeaderDownloadItem>?>(null) }
+                        var resolvingForDownload by remember(currentPlaylist.id) { mutableStateOf(false) }
+                        var showRemoveDownloadDialog by remember { mutableStateOf(false) }
+
+                        val downloadState =
+                            resolvedSongs
+                                ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
+                                ?: HeaderDownloadState.None
+
+                        suspend fun resolveForDownload(): List<HeaderDownloadItem> {
+                            val semaphore = Semaphore(4)
+                            return kotlinx.coroutines.coroutineScope {
+                                tracks
+                                    .map { track ->
+                                        async {
+                                            semaphore.withPermit {
+                                                SpotifyPlaybackResolver
+                                                    .resolveToMetadata(track, database)
+                                                    ?.let { HeaderDownloadItem(id = it.id, title = it.title) }
+                                            }
+                                        }
+                                    }.awaitAll()
+                                    .filterNotNull()
+                                    .distinctBy { it.id }
+                            }
+                        }
+
+                        LaunchedEffect(localPlaylist?.playlist?.keepOffline, tracks) {
+                            if (localPlaylist?.playlist?.keepOffline == true && resolvedSongs == null) {
+                                resolvingForDownload = true
+                                try {
+                                    resolvedSongs = resolveForDownload()
+                                } finally {
+                                    resolvingForDownload = false
+                                }
+                            }
+                        }
+
                         Column(
                             modifier =
                                 Modifier
@@ -573,7 +634,7 @@ fun SpotifyPlaylistScreen(
                                         Modifier
                                             .weight(1f)
                                             .height(48.dp),
-                                    shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                                    shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
                                     colors =
                                         ToggleButtonDefaults.toggleButtonColors(
                                             containerColor = MaterialTheme.colorScheme.primary,
@@ -588,7 +649,101 @@ fun SpotifyPlaylistScreen(
                                         modifier = Modifier.size(24.dp),
                                     )
                                 }
+
+                                ToggleButton(
+                                    checked = localPlaylist?.playlist?.keepOffline == true,
+                                    onCheckedChange = { enabled ->
+                                        val spotifyId = currentPlaylist.id
+                                        if (enabled) {
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                val entity =
+                                                    database.playlistBySpotifyId(spotifyId).firstOrNull()?.playlist
+                                                        ?: run {
+                                                            val created =
+                                                                PlaylistEntity(
+                                                                    name = currentPlaylist.name,
+                                                                    spotifyId = spotifyId,
+                                                                    thumbnailUrl = SpotifyMapper.getPlaylistThumbnail(currentPlaylist),
+                                                                    remoteSongCount = currentPlaylist.tracks?.total,
+                                                                    isEditable = false,
+                                                                    bookmarkedAt = LocalDateTime.now(),
+                                                                )
+                                                            database.insert(created)
+                                                            database.playlistBySpotifyId(spotifyId).firstOrNull()?.playlist ?: created
+                                                        }
+                                                database.update(entity.copy(keepOffline = true))
+                                            }
+                                            coroutineScope.launch(Dispatchers.IO) {
+                                                resolvingForDownload = true
+                                                try {
+                                                    val items = resolveForDownload()
+                                                    resolvedSongs = items
+                                                    sendAddMissingDownloads(
+                                                        context = context,
+                                                        songs = items,
+                                                        downloads = downloadUtil.downloads.value,
+                                                    )
+                                                } finally {
+                                                    resolvingForDownload = false
+                                                }
+                                            }
+                                        } else {
+                                            showRemoveDownloadDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier.size(48.dp),
+                                    shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                                    colors =
+                                        ToggleButtonDefaults.toggleButtonColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            checkedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            checkedContentColor = MaterialTheme.colorScheme.primary,
+                                        ),
+                                ) {
+                                    when {
+                                        downloadState is HeaderDownloadState.Partial || resolvingForDownload -> {
+                                            HeaderDownloadProgressIndicator(
+                                                progress =
+                                                    (downloadState as? HeaderDownloadState.Partial)?.progress ?: 0f,
+                                                modifier = Modifier.size(32.dp),
+                                            )
+                                        }
+
+                                        downloadState == HeaderDownloadState.Completed -> {
+                                            Icon(
+                                                painter = painterResource(R.drawable.offline),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        }
+
+                                        else -> {
+                                            Icon(
+                                                painter = painterResource(R.drawable.download),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(24.dp),
+                                            )
+                                        }
+                                    }
+                                }
                             }
+
+                            LocalPlaylistRemoveDownloadDialog(
+                                show = showRemoveDownloadDialog,
+                                playlistName = currentPlaylist.name,
+                                onDismiss = { showRemoveDownloadDialog = false },
+                                onConfirm = {
+                                    localPlaylist?.playlist?.takeIf { it.keepOffline }?.let { entity ->
+                                        coroutineScope.launch(Dispatchers.IO) {
+                                            database.update(entity.copy(keepOffline = false))
+                                        }
+                                    }
+                                    resolvedSongs?.let { items ->
+                                        sendRemoveDownloads(context, items.map { it.id })
+                                    }
+                                },
+                            )
 
                             Row(
                                 modifier =
