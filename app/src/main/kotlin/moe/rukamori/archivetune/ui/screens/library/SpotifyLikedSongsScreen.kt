@@ -48,12 +48,20 @@ import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import moe.rukamori.archivetune.LocalDatabase
+import moe.rukamori.archivetune.LocalDownloadUtil
 import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.DisableBlurKey
+import moe.rukamori.archivetune.constants.SpotifyLikedKeepOfflineKey
 import moe.rukamori.archivetune.extensions.togglePlayPause
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.spotify.SpotifyAccountViewModel
@@ -62,9 +70,15 @@ import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.SpotifyLikedSongsQueue
 import moe.rukamori.archivetune.ui.component.DraggableScrollbar
 import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
+import moe.rukamori.archivetune.ui.screens.playlist.LocalPlaylistRemoveDownloadDialog
 import moe.rukamori.archivetune.ui.screens.settings.SpotifyLoginFallback
 import moe.rukamori.archivetune.ui.screens.settings.SpotifyLoginSheet
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.utils.headerDownloadState
+import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
+import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
 import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,6 +99,8 @@ fun SpotifyLikedSongsScreen(
     var showSpotifyLogin by remember { mutableStateOf(false) }
 
     val playerConnection = LocalPlayerConnection.current
+    val database = LocalDatabase.current
+    val downloadUtil = LocalDownloadUtil.current
     val coroutineScope = rememberCoroutineScope()
     val isPlaying by playerConnection?.isPlaying?.collectAsStateWithLifecycle()
         ?: remember { mutableStateOf(false) }
@@ -121,6 +137,7 @@ fun SpotifyLikedSongsScreen(
         }
 
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
+    val (spotifyLikedKeepOffline, setSpotifyLikedKeepOffline) = rememberPreference(SpotifyLikedKeepOfflineKey, false)
     val surfaceColor = MaterialTheme.colorScheme.surface
     val errorContainerColor = MaterialTheme.colorScheme.errorContainer
 
@@ -272,6 +289,45 @@ fun SpotifyLikedSongsScreen(
             ) {
                 if (!isSearching) {
                     item(key = "header") {
+                        val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
+                        var resolvedSongs by remember { mutableStateOf<List<HeaderDownloadItem>?>(null) }
+                        var resolvingForDownload by remember { mutableStateOf(false) }
+                        var showRemoveDownloadDialog by remember { mutableStateOf(false) }
+
+                        val downloadState =
+                            resolvedSongs
+                                ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
+                                ?: HeaderDownloadState.None
+
+                        suspend fun resolveForDownload(): List<HeaderDownloadItem> {
+                            val semaphore = Semaphore(4)
+                            return kotlinx.coroutines.coroutineScope {
+                                tracks
+                                    .map { track ->
+                                        async {
+                                            semaphore.withPermit {
+                                                SpotifyPlaybackResolver
+                                                    .resolveToMetadata(track, database)
+                                                    ?.let { HeaderDownloadItem(id = it.id, title = it.title) }
+                                            }
+                                        }
+                                    }.awaitAll()
+                                    .filterNotNull()
+                                    .distinctBy { it.id }
+                            }
+                        }
+
+                        LaunchedEffect(spotifyLikedKeepOffline, tracks) {
+                            if (spotifyLikedKeepOffline && resolvedSongs == null) {
+                                resolvingForDownload = true
+                                try {
+                                    resolvedSongs = resolveForDownload()
+                                } finally {
+                                    resolvingForDownload = false
+                                }
+                            }
+                        }
+
                         SpotifyLikedHeaderHero(
                             total = total,
                             tracksCount = tracks.size,
@@ -281,10 +337,46 @@ fun SpotifyLikedSongsScreen(
                             onRefresh = viewModel::refresh,
                             onPlay = { playPlaylist() },
                             onShuffle = { playPlaylist(shuffled = true) },
+                            keepOffline = spotifyLikedKeepOffline,
+                            resolvingForDownload = resolvingForDownload,
+                            downloadState = downloadState,
+                            onKeepOfflineChange = { enabled ->
+                                if (enabled) {
+                                    setSpotifyLikedKeepOffline(true)
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        resolvingForDownload = true
+                                        try {
+                                            val items = resolveForDownload()
+                                            resolvedSongs = items
+                                            sendAddMissingDownloads(
+                                                context = context,
+                                                songs = items,
+                                                downloads = downloadUtil.downloads.value,
+                                            )
+                                        } finally {
+                                            resolvingForDownload = false
+                                        }
+                                    }
+                                } else {
+                                    showRemoveDownloadDialog = true
+                                }
+                            },
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
                                     .padding(top = systemBarsTopPadding + AppBarHeight),
+                        )
+
+                        LocalPlaylistRemoveDownloadDialog(
+                            show = showRemoveDownloadDialog,
+                            playlistName = context.getString(R.string.spotify_liked_songs),
+                            onDismiss = { showRemoveDownloadDialog = false },
+                            onConfirm = {
+                                setSpotifyLikedKeepOffline(false)
+                                resolvedSongs?.let { items ->
+                                    sendRemoveDownloads(context, items.map { it.id })
+                                }
+                            },
                         )
                     }
                 }
