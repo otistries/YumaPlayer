@@ -45,6 +45,7 @@ import moe.rukamori.archivetune.storage.StorageLocationRepository
 import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
+import moe.rukamori.archivetune.utils.OfflineResyncer
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyAuth
 import moe.rukamori.archivetune.utils.ProxyUtils
@@ -74,6 +75,7 @@ class App :
     Application(),
     SingletonImageLoader.Factory {
     @Inject lateinit var syncUtils: SyncUtils
+    @Inject lateinit var offlineResyncer: OfflineResyncer
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -165,6 +167,14 @@ class App :
                 syncUtils.trySpotifyAutoSync()
             } catch (e: Exception) {
                 Timber.e(e, "Error restoring Spotify auto-sync on app startup")
+            }
+        }
+
+        applicationScope.launch(Dispatchers.IO) {
+            try {
+                offlineResyncer.enqueueMissingForKeepOfflinePlaylists()
+            } catch (e: Exception) {
+                Timber.e(e, "Error enqueueing missing keep-offline downloads on startup")
             }
         }
 

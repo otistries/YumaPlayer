@@ -276,6 +276,9 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
     fun playlistSongs(playlistId: String): Flow<List<PlaylistSong>>
 
+    @Query("SELECT DISTINCT songId FROM playlist_song_map")
+    suspend fun playlistSongIds(): List<String>
+
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")
     fun playlistSongMaps(songId: String): List<PlaylistSongMap>
