@@ -10,6 +10,7 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import moe.rukamori.archivetune.constants.SpotifyLikedKeepOfflineKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
@@ -30,6 +31,34 @@ class OfflineResyncer
         fun enqueueMissingForKeepOfflinePlaylists() {
             syncState.syncScope.launch {
                 try {
+                    val keepOfflineLikedSongs =
+                        runCatching {
+                            context.dataStore.data.first()[SpotifyLikedKeepOfflineKey] ?: false
+                        }.getOrElse { e ->
+                            Timber.w(e, "Failed to read SpotifyLikedKeepOfflineKey")
+                            false
+                        }
+                    if (keepOfflineLikedSongs) {
+                        val missingLikedSongs =
+                            database.likedSongsByRowIdAscSpotify().first().map { likedSong ->
+                                HeaderDownloadItem(
+                                    id = likedSong.song.id,
+                                    title = likedSong.song.title,
+                                )
+                            }
+                        if (missingLikedSongs.isNotEmpty()) {
+                            runCatching {
+                                sendAddMissingDownloads(
+                                    context = context,
+                                    songs = missingLikedSongs,
+                                    downloads = downloadUtil.downloads.value,
+                                )
+                            }.onFailure {
+                                Timber.w(it, "Failed to enqueue missing Spotify liked songs downloads on startup")
+                            }
+                        }
+                    }
+
                     val keepOfflinePlaylists = database.keepOfflinePlaylists().first()
                     if (keepOfflinePlaylists.isEmpty()) return@launch
 

@@ -677,6 +677,7 @@ val EnableSpotifyKey = ShowSpotifyPlaylistsKey
 val UseSpotifyHomeKey = booleanPreferencesKey("use_spotify_home")
 val SpotifyLibraryPlaylistsCacheKey = stringPreferencesKey("spotify_library_playlists_cache")
 val SpotifyLikedSongsCacheKey = stringPreferencesKey("spotify_liked_songs_cache")
+val SpotifyLikedKeepOfflineKey = booleanPreferencesKey("spotify_liked_keep_offline")
 val SpotifyProfileRecentItemsKey = stringPreferencesKey("spotify_profile_recent_items_json")
 val SpotifyProfileTopTracksKey = stringPreferencesKey("spotify_profile_top_tracks_json")
 val SpotifyProfileArtistsKey = stringPreferencesKey("spotify_profile_artists_json")

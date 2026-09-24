@@ -19,6 +19,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import moe.rukamori.archivetune.constants.LastSpotifySyncKey
 import moe.rukamori.archivetune.constants.LikeSource
+import moe.rukamori.archivetune.constants.SpotifyLikedKeepOfflineKey
 import moe.rukamori.archivetune.db.entities.PlaylistEntity
 import moe.rukamori.archivetune.db.entities.PlaylistSongMap
 import moe.rukamori.archivetune.db.entities.SpotifyMatchEntity
@@ -278,6 +279,17 @@ class SpotifySyncOps
                     }
 
                 if (!state.isSyncStillEnabled(gen)) return@withLock
+                val keepOfflineLikedSongs =
+                    runCatching {
+                        state.context.dataStore.data.first()[SpotifyLikedKeepOfflineKey] ?: false
+                    }.getOrElse { e ->
+                        Timber.w(e, "Failed to read SpotifyLikedKeepOfflineKey")
+                        false
+                    }
+                if (keepOfflineLikedSongs) {
+                    enqueueKeepOfflineDownloads(resolvedTracks = resolvedTracks.map { it.metadata })
+                }
+
                 val localLikedSongs = state.database.likedSongsByNameAsc(LikeSource.SPOTIFY).first()
                 if (!state.isSyncStillEnabled(gen)) return@withLock
                 val localLikedIds = localLikedSongs.map { it.id }.toSet()

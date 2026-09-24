@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.theme.LocalYumaColors
 import moe.rukamori.archivetune.ui.theme.yumaGlassCard
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.utils.makeTimeString
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -56,6 +58,10 @@ fun SpotifyLikedHeaderHero(
     onRefresh: () -> Unit,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
+    keepOffline: Boolean = false,
+    resolvingForDownload: Boolean = false,
+    downloadState: HeaderDownloadState = HeaderDownloadState.None,
+    onKeepOfflineChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -204,7 +210,7 @@ fun SpotifyLikedHeaderHero(
                     Modifier
                         .weight(1f)
                         .height(48.dp),
-                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
                 colors =
                     ToggleButtonDefaults.toggleButtonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -218,6 +224,46 @@ fun SpotifyLikedHeaderHero(
                     contentDescription = stringResource(R.string.shuffle),
                     modifier = Modifier.size(24.dp),
                 )
+            }
+
+            ToggleButton(
+                checked = keepOffline,
+                onCheckedChange = onKeepOfflineChange,
+                modifier = Modifier.size(48.dp),
+                shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
+                colors =
+                    ToggleButtonDefaults.toggleButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        checkedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        checkedContentColor = MaterialTheme.colorScheme.primary,
+                    ),
+            ) {
+                when {
+                    downloadState is HeaderDownloadState.Partial || resolvingForDownload -> {
+                        HeaderDownloadProgressIndicator(
+                            progress =
+                                (downloadState as? HeaderDownloadState.Partial)?.progress ?: 0f,
+                            modifier = Modifier.size(32.dp),
+                        )
+                    }
+
+                    downloadState == HeaderDownloadState.Completed -> {
+                        Icon(
+                            painter = painterResource(R.drawable.offline),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+
+                    else -> {
+                        Icon(
+                            painter = painterResource(R.drawable.download),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                }
             }
         }
 
