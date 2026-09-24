@@ -351,6 +351,19 @@ fun StorageSettings(
             PreferenceGroup(title = stringResource(R.string.downloaded_songs)) {
                 item {
                     PreferenceEntry(
+                        title = { Text(stringResource(R.string.download_queue)) },
+                        description = stringResource(R.string.download_queue_desc),
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.queue_music),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = { navController.navigate("downloads") },
+                    )
+                }
+                item {
+                    PreferenceEntry(
                         title = { Text(stringResource(R.string.clear_all_downloads)) },
                         description = stringResource(R.string.size_used, formatFileSize(downloadCacheSize)),
                         icon = {

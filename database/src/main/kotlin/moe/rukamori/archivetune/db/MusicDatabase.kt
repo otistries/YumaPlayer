@@ -65,7 +65,7 @@ import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 
 private const val TAG = "MusicDatabase"
-private const val CURRENT_VERSION = 36
+private const val CURRENT_VERSION = 37
 
 class MusicDatabase(
     private val delegate: InternalDatabase,
@@ -407,7 +407,7 @@ abstract class InternalDatabase : RoomDatabase() {
         fun newInstance(context: Context): MusicDatabase {
             val universalMigrations =
                 (2 until CURRENT_VERSION)
-                    .filter { it !in 33..35 }
+                    .filter { it !in 33..36 }
                     .map { from -> UniversalMigration(context, from, CURRENT_VERSION) }
                     .toTypedArray()
 
@@ -419,6 +419,7 @@ abstract class InternalDatabase : RoomDatabase() {
                         MIGRATION_33_34,
                         MIGRATION_34_35,
                         MIGRATION_35_36,
+                        MIGRATION_36_37,
                         *universalMigrations,
                     ).addCallback(DatabaseCallback())
                     .fallbackToDestructiveMigration()
@@ -1180,5 +1181,12 @@ private val MIGRATION_35_36 =
                 WHERE liked != 0 AND NOT EXISTS (SELECT 1 FROM spotify_match WHERE spotify_match.youtubeId = song.id)
                 """.trimIndent(),
             )
+        }
+    }
+
+private val MIGRATION_36_37 =
+    object : Migration(36, 37) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE playlist ADD COLUMN keepOffline INTEGER NOT NULL DEFAULT 0")
         }
     }

@@ -27,6 +27,8 @@ import moe.rukamori.archivetune.spotify.Spotify
 import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.SpotifyPlaybackResolver
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
+import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
+import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
 import timber.log.Timber
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicBoolean
@@ -161,6 +163,12 @@ class SpotifySyncOps
                                         ),
                                     )
                                 }
+                            }
+
+                            if (playlistEntity.keepOffline) {
+                                enqueueKeepOfflineDownloads(
+                                    resolvedTracks = resolvedTracks.map { it.second },
+                                )
                             }
                         } catch (e: Exception) {
                             Timber.e(e, "Failed to sync Spotify playlist ${playlist.name}")
@@ -326,6 +334,22 @@ class SpotifySyncOps
                         isAutoSyncInFlight.set(false)
                     }
                 }
+            }
+        }
+
+        fun enqueueKeepOfflineDownloads(resolvedTracks: List<MediaMetadata>) {
+            if (resolvedTracks.isEmpty()) return
+            try {
+                sendAddMissingDownloads(
+                    context = state.context,
+                    songs =
+                        resolvedTracks.map {
+                            HeaderDownloadItem(id = it.id, title = it.title)
+                        },
+                    downloads = state.downloadUtil.downloads.value,
+                )
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to enqueue keep-offline downloads")
             }
         }
 

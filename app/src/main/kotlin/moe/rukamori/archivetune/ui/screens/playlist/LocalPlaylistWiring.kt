@@ -474,9 +474,15 @@ fun removeLocalPlaylistDownloads(
     songs: List<PlaylistSong>,
     editable: Boolean,
 ) {
-    if (!editable) {
+    val entity = playlist?.playlist
+    if (entity != null) {
         database.transaction {
-            playlist?.id?.let { clearPlaylist(it) }
+            if (entity.keepOffline) {
+                update(entity.copy(keepOffline = false))
+            }
+            if (!editable && entity.spotifyId == null) {
+                clearPlaylist(entity.id)
+            }
         }
     }
     sendRemoveDownloads(
@@ -715,6 +721,18 @@ fun rememberLocalPlaylistActions(
 
                     else -> {
                         onStartDownload()
+                    }
+                }
+            },
+            onToggleKeepOffline = { enabled ->
+                playlist?.playlist?.let { entity ->
+                    coroutineScope.launch(Dispatchers.IO) {
+                        database.update(entity.copy(keepOffline = enabled))
+                    }
+                    if (enabled) {
+                        onStartDownload()
+                    } else {
+                        onRemoveDownloadDialog()
                     }
                 }
             },

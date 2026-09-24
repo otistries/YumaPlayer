@@ -52,6 +52,7 @@ data class LocalPlaylistActions(
     val onRefresh: () -> Unit = {},
     val onReorderCommit: (from: Int, to: Int) -> Unit = { _, _ -> },
     val onDownload: () -> Unit = {},
+    val onToggleKeepOffline: (Boolean) -> Unit = {},
     val onEdit: () -> Unit = {},
     val onDelete: () -> Unit = {},
     val onToggleLike: () -> Unit = {},
