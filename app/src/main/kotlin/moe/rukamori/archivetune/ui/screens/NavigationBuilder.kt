@@ -54,6 +54,7 @@ import moe.rukamori.archivetune.ui.screens.settings.BackupAndRestore
 import moe.rukamori.archivetune.ui.screens.settings.ChangelogScreen
 import moe.rukamori.archivetune.ui.screens.settings.ContentSettings
 import moe.rukamori.archivetune.ui.screens.settings.DebugSettings
+import moe.rukamori.archivetune.ui.screens.settings.DownloadsScreen
 import moe.rukamori.archivetune.ui.screens.settings.DiscordSettings
 import moe.rukamori.archivetune.ui.screens.settings.HiddenPlaylistsScreen
 import moe.rukamori.archivetune.ui.screens.settings.IconScreen
@@ -395,6 +396,9 @@ fun NavGraphBuilder.navigationBuilder(
     }
     composable("settings/storage") {
         StorageSettings(navController)
+    }
+    composable("downloads") {
+        DownloadsScreen(navController, scrollBehavior)
     }
     composable("settings/privacy") {
         PrivacySettings(navController)

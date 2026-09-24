@@ -179,6 +179,16 @@
     <string name="flac_download_saved">Saved: %1$s</string>
     <string name="flac_download_deleted">Deleted: %1$s</string>
     <string name="download_progress_percent">%1$d%%</string>
+    <string name="download_queue">Download queue</string>
+    <string name="download_queue_desc">See progress, retry failed, pause or resume downloads</string>
+    <string name="download_queue_empty">No downloads</string>
+    <string name="download_state_queued">Queued</string>
+    <string name="download_state_paused">Paused</string>
+    <string name="download_state_failed">Failed</string>
+    <string name="download_state_completed">Downloaded</string>
+    <string name="download_retry_all_failed">Retry all failed</string>
+    <string name="download_pause_all">Pause all</string>
+    <string name="download_resume_all">Resume all</string>
     <string name="import_playlist">Import playlist</string>
     <string name="import_failed">Import failed</string>
     <string name="update_button">Update</string>

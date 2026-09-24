@@ -494,8 +494,8 @@ fun LocalPlaylistHeroSection(
             }
 
             ToggleButton(
-                checked = downloadState == HeaderDownloadState.Completed,
-                onCheckedChange = { actions.onDownload() },
+                checked = playlist.playlist.keepOffline,
+                onCheckedChange = { actions.onToggleKeepOffline(it) },
                 modifier = Modifier.size(48.dp),
                 shapes = ButtonGroupDefaults.connectedMiddleButtonShapes(),
                 colors =

@@ -51,6 +51,7 @@ import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
+import timber.log.Timber
 import java.io.IOException
 import java.time.LocalDateTime
 import java.util.concurrent.CompletableFuture
@@ -243,6 +244,7 @@ class DownloadUtil
                     result[cursor.download.request.id] = cursor.download
                 }
                 downloads.value = result
+                retryFailedDownloads(result.values.toList())
             }
             downloadScope.launch {
                 var previousFingerprint: String? = null
@@ -259,6 +261,28 @@ class DownloadUtil
         }
 
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
+
+        /**
+         * Re-enqueues downloads left in [Download.STATE_FAILED] by a previous session.
+         * If the network is unavailable they simply sit in STATE_QUEUED until
+         * connectivity returns. Safe to call once per process start.
+         */
+        private fun retryFailedDownloads(downloads: Collection<Download>) {
+            downloads
+                .filter { it.state == Download.STATE_FAILED }
+                .forEach { download ->
+                    runCatching {
+                        DownloadService.sendAddDownload(
+                            context,
+                            ExoDownloadService::class.java,
+                            download.request,
+                            false,
+                        )
+                    }.onFailure {
+                        Timber.w(it, "Could not re-enqueue failed download %s", download.request.id)
+                    }
+                }
+        }
 
         private fun buildSongUrlCacheKey(
             mediaId: String,

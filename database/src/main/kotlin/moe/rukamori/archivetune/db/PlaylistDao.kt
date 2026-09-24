@@ -119,6 +119,12 @@ interface PlaylistDao {
 
     @Transaction
     @Query(
+        "SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE keepOffline = 1",
+    )
+    fun keepOfflinePlaylists(): Flow<List<Playlist>>
+
+    @Transaction
+    @Query(
         "SELECT *, (SELECT COUNT(*) FROM playlist_song_map WHERE playlistId = playlist.id) AS songCount FROM playlist WHERE id = :playlistId LIMIT 1",
     )
     fun getPlaylistByIdBlocking(playlistId: String): Playlist?

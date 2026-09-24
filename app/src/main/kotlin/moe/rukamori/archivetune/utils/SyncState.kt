@@ -22,6 +22,7 @@ import moe.rukamori.archivetune.constants.InnerTubeCookieKey
 import moe.rukamori.archivetune.constants.YtmSyncKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.innertube.utils.hasYouTubeLoginCookie
+import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.spotify.SpotifyLibraryRepository
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicLong
@@ -35,6 +36,7 @@ class SyncState
         @ApplicationContext val context: Context,
         val database: MusicDatabase,
         val spotifyRepository: SpotifyLibraryRepository,
+        val downloadUtil: DownloadUtil,
     ) {
         val syncScope = CoroutineScope(Dispatchers.IO)
         val syncEnabled = MutableStateFlow(true)
