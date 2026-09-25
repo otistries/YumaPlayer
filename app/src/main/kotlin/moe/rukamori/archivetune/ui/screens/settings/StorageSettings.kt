@@ -84,6 +84,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.MaxCanvasCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxImageCacheSizeKey
 import moe.rukamori.archivetune.constants.MaxSongCacheSizeKey
+import moe.rukamori.archivetune.constants.ExportKeepOfflineKey
 import moe.rukamori.archivetune.constants.SmartTrimmerKey
 import moe.rukamori.archivetune.extensions.directorySizeBytes
 import moe.rukamori.archivetune.extensions.tryOrNull
@@ -179,6 +180,11 @@ fun StorageSettings(
         rememberPreference(
             key = MaxCanvasCacheSizeKey,
             defaultValue = 256,
+        )
+    val (exportKeepOffline, onExportKeepOfflineChange) =
+        rememberPreference(
+            key = ExportKeepOfflineKey,
+            defaultValue = false,
         )
     var clearCacheDialog by remember { mutableStateOf(false) }
     var clearDownloads by remember { mutableStateOf(false) }
@@ -373,6 +379,14 @@ fun StorageSettings(
                             )
                         },
                         onClick = { clearDownloads = true },
+                    )
+                }
+                item {
+                    SwitchPreference(
+                        title = { Text(stringResource(R.string.export_keep_offline)) },
+                        description = stringResource(R.string.export_keep_offline_desc),
+                        checked = exportKeepOffline,
+                        onCheckedChange = onExportKeepOfflineChange,
                     )
                 }
             }

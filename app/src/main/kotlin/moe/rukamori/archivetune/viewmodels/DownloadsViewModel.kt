@@ -7,6 +7,7 @@
 package moe.rukamori.archivetune.viewmodels
 
 import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.exoplayer.offline.Download
@@ -23,10 +24,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.playback.ExoDownloadService
 import moe.rukamori.archivetune.utils.PlaylistOfflineStatus
+import moe.rukamori.archivetune.utils.SyncUtils
 import javax.inject.Inject
 
 enum class DownloadQueueFilter {
@@ -72,6 +76,7 @@ class DownloadsViewModel
     constructor(
         @ApplicationContext private val context: Context,
         private val downloadUtil: DownloadUtil,
+        private val syncUtils: SyncUtils,
         database: MusicDatabase,
     ) : ViewModel() {
         val filter = MutableStateFlow(DownloadQueueFilter.ALL)
@@ -121,6 +126,10 @@ class DownloadsViewModel
                 database.keepOfflinePlaylists(),
                 downloadUtil.downloads,
             ) { playlists, downloads ->
+                val bytesBySongId =
+                    downloads.mapValues { (_, download) ->
+                        if (download.state == Download.STATE_COMPLETED) download.contentLength.coerceAtLeast(0L) else 0L
+                    }
                 playlists
                     .map { playlist ->
                         PlaylistOfflineStatus.compute(
@@ -128,12 +137,34 @@ class DownloadsViewModel
                             downloads = downloads.mapValues { it.value.state },
                             name = playlist.playlist.name,
                             playlistId = playlist.id,
+                            bytesBySongId = bytesBySongId,
+                            spotifyId = playlist.playlist.spotifyId,
                         )
                     }.sortedWith(
                         compareBy<PlaylistOfflineStatus> { it.isFullyOffline }
                             .thenByDescending { it.completeness },
                     )
             }.flowOn(Dispatchers.IO)
+
+        fun syncPlaylist(spotifyId: String) {
+            viewModelScope.launch(Dispatchers.Main) {
+                Toast.makeText(context, R.string.playlist_sync_started, Toast.LENGTH_SHORT).show()
+                val outcome =
+                    runCatching {
+                        withContext(Dispatchers.IO) { syncUtils.syncSingleSpotifyPlaylist(spotifyId) }
+                    }
+                if (outcome.getOrDefault(false)) return@launch
+                val detail =
+                    outcome.exceptionOrNull()?.let { e ->
+                        e.localizedMessage?.takeIf(String::isNotBlank) ?: e.javaClass.simpleName
+                    } ?: context.getString(R.string.error_unknown)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.playlist_sync_failed, detail),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
 
         fun retry(item: DownloadQueueItem) {
             val download = downloadUtil.downloads.value[item.songId] ?: return

@@ -315,6 +315,15 @@ internal fun PlayerBehaviorSection(
         }
         item {
             SwitchPreference(
+                title = { Text(stringResource(R.string.offline_mode)) },
+                description = stringResource(R.string.offline_mode_desc),
+                icon = { Icon(painterResource(R.drawable.offline), null) },
+                checked = state.offlineMode,
+                onCheckedChange = actions.onOfflineModeChange,
+            )
+        }
+        item {
+            SwitchPreference(
                 title = { Text(stringResource(R.string.stop_music_on_task_clear)) },
                 icon = { Icon(painterResource(R.drawable.swipe), null) },
                 checked = state.stopMusicOnTaskClear,

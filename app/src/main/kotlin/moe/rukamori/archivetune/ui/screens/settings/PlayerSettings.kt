@@ -50,6 +50,7 @@ import moe.rukamori.archivetune.constants.FlacQuality
 import moe.rukamori.archivetune.constants.FlacStreamingQualityKey
 import moe.rukamori.archivetune.constants.LowDataModeKey
 import moe.rukamori.archivetune.constants.MemoryCacheToggleKey
+import moe.rukamori.archivetune.constants.OfflineOnlyKey
 import moe.rukamori.archivetune.constants.PauseOnDeviceMuteKey
 import moe.rukamori.archivetune.constants.PlaybackSource
 import moe.rukamori.archivetune.constants.PlaybackSourceKey
@@ -91,6 +92,10 @@ fun PlayerSettings(navController: NavController) {
     val (lowDataMode, onLowDataModeChange) = rememberPreference(
         LowDataModeKey,
         defaultValue = true,
+    )
+    val (offlineMode, onOfflineModeChange) = rememberPreference(
+        OfflineOnlyKey,
+        defaultValue = false,
     )
     val (skipSilence, onSkipSilenceChange) = rememberPreference(
         SkipSilenceKey,
@@ -183,6 +188,7 @@ fun PlayerSettings(navController: NavController) {
         flacDownloadQuality = flacDownloadQuality,
         audioQuality = audioQuality,
         lowDataMode = lowDataMode,
+        offlineMode = offlineMode,
         skipSilence = skipSilence,
         audioNormalization = audioNormalization,
         autoSkipNextOnError = autoSkipNextOnError,
@@ -211,6 +217,7 @@ fun PlayerSettings(navController: NavController) {
             onFlacDownloadQualityChange = onFlacDownloadQualityChange,
             onAudioQualityChange = onAudioQualityChange,
             onLowDataModeChange = onLowDataModeChange,
+            onOfflineModeChange = onOfflineModeChange,
             onSkipSilenceChange = onSkipSilenceChange,
             onAudioNormalizationChange = onAudioNormalizationChange,
             onAutoSkipNextOnErrorChange = onAutoSkipNextOnErrorChange,

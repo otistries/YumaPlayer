@@ -190,4 +190,84 @@ class OfflineSyncLogicTest {
         assertEquals(2, status.downloaded)
         assertTrue(status.isFullyOffline)
     }
+
+    @Test
+    fun compute_sumsBytesOfCompletedDownloads() {
+        val downloads =
+            mapOf(
+                "a" to Download.STATE_COMPLETED,
+                "b" to Download.STATE_COMPLETED,
+                "c" to Download.STATE_DOWNLOADING,
+                "d" to Download.STATE_FAILED,
+            )
+        val bytesBySongId =
+            mapOf(
+                "a" to 100L,
+                "b" to 250L,
+                "c" to 999L,
+                "d" to 1234L,
+            )
+
+        val status =
+            PlaylistOfflineStatus.compute(
+                songIds = listOf("a", "b", "c", "d"),
+                downloads = downloads,
+                name = "My playlist",
+                playlistId = "p1",
+                bytesBySongId = bytesBySongId,
+            )
+
+        assertEquals(350L, status.bytesDownloaded)
+    }
+
+    @Test
+    fun compute_missingOrNegativeBytesAreIgnored() {
+        val status =
+            PlaylistOfflineStatus.compute(
+                songIds = listOf("a", "b", "c"),
+                downloads =
+                    mapOf(
+                        "a" to Download.STATE_COMPLETED,
+                        "b" to Download.STATE_COMPLETED,
+                        "c" to Download.STATE_COMPLETED,
+                    ),
+                name = "My playlist",
+                playlistId = "p1",
+                bytesBySongId =
+                    mapOf(
+                        "a" to 100L,
+                        "b" to -1L,
+                    ),
+            )
+
+        assertEquals(100L, status.bytesDownloaded)
+    }
+
+    @Test
+    fun compute_defaultsToNoBytesAndNoSpotifyId() {
+        val status =
+            PlaylistOfflineStatus.compute(
+                songIds = listOf("a"),
+                downloads = mapOf("a" to Download.STATE_COMPLETED),
+                name = "My playlist",
+                playlistId = "p1",
+            )
+
+        assertEquals(0L, status.bytesDownloaded)
+        assertNull(status.spotifyId)
+    }
+
+    @Test
+    fun compute_carriesSpotifyId() {
+        val status =
+            PlaylistOfflineStatus.compute(
+                songIds = listOf("a"),
+                downloads = mapOf("a" to Download.STATE_COMPLETED),
+                name = "My playlist",
+                playlistId = "p1",
+                spotifyId = "sp_123",
+            )
+
+        assertEquals("sp_123", status.spotifyId)
+    }
 }
