@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.ui.screens.playlist
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -115,19 +116,22 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.component.SpotifyTrackListItem
 import moe.rukamori.archivetune.ui.theme.PlayerColorExtractor
+import moe.rukamori.archivetune.ui.utils.DownloadProgressFloatingToolbar
+import moe.rukamori.archivetune.ui.utils.DownloadProgressToolbarState
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadProgressIndicator
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.utils.hasActiveDownloads
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.resize
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
+import moe.rukamori.archivetune.ui.utils.sendPauseDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
+import moe.rukamori.archivetune.ui.utils.sendResumeDownloads
 import moe.rukamori.archivetune.utils.makeTimeString
 import moe.rukamori.archivetune.utils.rememberPreference
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -182,6 +186,71 @@ fun SpotifyPlaylistScreen(
         remember(tracks) {
             tracks.sumOf { track -> track.durationMs.toLong() }
         }
+
+    val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
+
+    var resolvedSongs by remember(playlist?.id) { mutableStateOf<List<HeaderDownloadItem>?>(null) }
+    var resolvingForDownload by remember(playlist?.id) { mutableStateOf(false) }
+    var resolvedCount by remember(playlist?.id) { mutableStateOf(0) }
+    var totalCount by remember(playlist?.id) { mutableStateOf(0) }
+    var resolveError by remember(playlist?.id) { mutableStateOf(false) }
+    var downloadsToolbarDismissed by remember(playlist?.id) { mutableStateOf(false) }
+    var downloadsPaused by remember(playlist?.id) { mutableStateOf(false) }
+
+    val downloadState =
+        resolvedSongs
+            ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
+            ?: HeaderDownloadState.None
+
+    LaunchedEffect(resolveError) {
+        if (resolveError) {
+            Toast.makeText(context, R.string.download_resolve_failed, Toast.LENGTH_SHORT).show()
+            resolveError = false
+        }
+    }
+
+    suspend fun resolveForDownload(
+        onBatchResolved: (List<HeaderDownloadItem>) -> Unit = {},
+    ): List<HeaderDownloadItem> {
+        val semaphore = Semaphore(4)
+        totalCount = tracks.size
+        resolvedCount = 0
+        val deferreds =
+            kotlinx.coroutines.coroutineScope {
+                tracks.map { track ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            SpotifyPlaybackResolver
+                                .resolveToMetadata(track, database)
+                                ?.let { HeaderDownloadItem(id = it.id, title = it.title) }
+                        }
+                    }
+                }
+            }
+        val results = mutableListOf<HeaderDownloadItem>()
+        val sentIds = mutableSetOf<String>()
+        var batch = mutableListOf<HeaderDownloadItem>()
+        for (deferred in deferreds) {
+            val item = deferred.await()
+            resolvedCount += 1
+            if (item != null) {
+                results += item
+                batch += item
+            }
+            if (batch.size >= 8) {
+                val pending = batch.filter { it.id !in sentIds }
+                sentIds += pending.map { it.id }
+                onBatchResolved(pending)
+                batch = mutableListOf()
+            }
+        }
+        if (batch.isNotEmpty()) {
+            val pending = batch.filter { it.id !in sentIds }
+            sentIds += pending.map { it.id }
+            onBatchResolved(pending)
+        }
+        return results.distinctBy { it.id }
+    }
 
     val (disableBlur) = rememberPreference(DisableBlurKey, false)
     var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
@@ -422,74 +491,7 @@ fun SpotifyPlaylistScreen(
                             remember(currentPlaylist.id) {
                                 database.playlistBySpotifyId(currentPlaylist.id)
                             }.collectAsStateWithLifecycle(initialValue = null)
-                        val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
-                        var resolvedSongs by
-                            remember(currentPlaylist.id) { mutableStateOf<List<HeaderDownloadItem>?>(null) }
-                        var resolvingForDownload by remember(currentPlaylist.id) { mutableStateOf(false) }
-                        var resolvedCount by remember(currentPlaylist.id) { mutableStateOf(0) }
-                        var totalCount by remember(currentPlaylist.id) { mutableStateOf(0) }
-                        var resolveError by remember(currentPlaylist.id) { mutableStateOf(false) }
                         var showRemoveDownloadDialog by remember { mutableStateOf(false) }
-
-                        val downloadState =
-                            resolvedSongs
-                                ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
-                                ?: HeaderDownloadState.None
-
-                        LaunchedEffect(resolveError) {
-                            if (resolveError) {
-                                Toast.makeText(context, R.string.download_resolve_failed, Toast.LENGTH_SHORT).show()
-                                resolveError = false
-                            }
-                        }
-
-                        suspend fun resolveForDownload(
-                            onBatchResolved: (List<HeaderDownloadItem>) -> Unit = {},
-                        ): List<HeaderDownloadItem> {
-                            val semaphore = Semaphore(4)
-                            val channel = Channel<HeaderDownloadItem?>(Channel.UNLIMITED)
-                            val results = mutableListOf<HeaderDownloadItem>()
-                            val sentIds = mutableSetOf<String>()
-                            var batch = mutableListOf<HeaderDownloadItem>()
-                            totalCount = tracks.size
-                            resolvedCount = 0
-                            kotlinx.coroutines.coroutineScope {
-                                launch {
-                                    tracks
-                                        .map { track ->
-                                            async {
-                                                semaphore.withPermit {
-                                                    channel.send(
-                                                        SpotifyPlaybackResolver
-                                                            .resolveToMetadata(track, database)
-                                                            ?.let { HeaderDownloadItem(id = it.id, title = it.title) },
-                                                    )
-                                                }
-                                            }
-                                        }.awaitAll()
-                                    channel.close()
-                                }
-                                for (item in channel) {
-                                    resolvedCount += 1
-                                    if (item != null) {
-                                        results += item
-                                        batch += item
-                                    }
-                                    if (batch.size >= 8) {
-                                        val pending = batch.filter { it.id !in sentIds }
-                                        sentIds += pending.map { it.id }
-                                        onBatchResolved(pending)
-                                        batch = mutableListOf()
-                                    }
-                                }
-                                if (batch.isNotEmpty()) {
-                                    val pending = batch.filter { it.id !in sentIds }
-                                    sentIds += pending.map { it.id }
-                                    onBatchResolved(pending)
-                                }
-                            }
-                            return results.distinctBy { it.id }
-                        }
 
                         LaunchedEffect(localPlaylist?.playlist?.keepOffline, tracks) {
                             if (localPlaylist?.playlist?.keepOffline == true && resolvedSongs == null) {
@@ -702,6 +704,8 @@ fun SpotifyPlaylistScreen(
                                     onCheckedChange = { enabled ->
                                         val spotifyId = currentPlaylist.id
                                         if (enabled) {
+                                            downloadsToolbarDismissed = false
+                                            downloadsPaused = false
                                             coroutineScope.launch(Dispatchers.IO) {
                                                 val entity =
                                                     database.playlistBySpotifyId(spotifyId).firstOrNull()?.playlist
@@ -891,10 +895,16 @@ fun SpotifyPlaylistScreen(
                     }
                 val trackIsResolving = resolvingTrackId == track.id
 
+                val spotifyMatch by
+                    remember(track.id) { database.spotifyMatch(track.id) }.collectAsStateWithLifecycle(initialValue = null)
+                val trackDownload = spotifyMatch?.youtubeId?.let { downloads[it] }
+
                 SpotifyTrackListItem(
                     track = track,
                     isActive = trackIsActive || trackIsResolving,
                     isPlaying = isPlaying && !trackIsResolving,
+                    downloadState = trackDownload?.state,
+                    downloadProgress = trackDownload?.percentDownloaded ?: -1f,
                     trailingContent = {
                         if (trackIsResolving) {
                             CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
@@ -928,6 +938,40 @@ fun SpotifyPlaylistScreen(
             scrollState = lazyListState,
             headerItems = if (!isSearching && playlist != null) 1 else 0,
         )
+
+        AnimatedVisibility(
+            visible = downloadState is HeaderDownloadState.Partial && !downloadsToolbarDismissed,
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues())
+                    .padding(bottom = 16.dp),
+        ) {
+            val partialState = downloadState as? HeaderDownloadState.Partial
+            if (partialState != null) {
+                val songIds = remember(resolvedSongs) { resolvedSongs?.map { it.id } ?: emptyList() }
+                DownloadProgressFloatingToolbar(
+                    state =
+                        DownloadProgressToolbarState(
+                            progress = partialState.progress,
+                            paused = downloadsPaused,
+                            canPause = hasActiveDownloads(songIds, downloads),
+                        ),
+                    onPauseResume = {
+                        if (downloadsPaused) {
+                            sendResumeDownloads(context, songIds)
+                        } else {
+                            sendPauseDownloads(context, songIds)
+                        }
+                        downloadsPaused = !downloadsPaused
+                    },
+                    onDismiss = {
+                        downloadsPaused = false
+                        downloadsToolbarDismissed = true
+                    },
+                )
+            }
+        }
 
         TopAppBar(
             colors = GlassDefaults.topAppBarColors(),

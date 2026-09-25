@@ -10,6 +10,7 @@ package moe.rukamori.archivetune.ui.screens.library
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -56,8 +57,7 @@ import androidx.navigation.NavHostController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -80,12 +80,17 @@ import moe.rukamori.archivetune.ui.component.ExpressivePullToRefreshBox
 import moe.rukamori.archivetune.ui.screens.playlist.LocalPlaylistRemoveDownloadDialog
 import moe.rukamori.archivetune.ui.screens.settings.SpotifyLoginFallback
 import moe.rukamori.archivetune.ui.screens.settings.SpotifyLoginSheet
+import moe.rukamori.archivetune.ui.utils.DownloadProgressFloatingToolbar
+import moe.rukamori.archivetune.ui.utils.DownloadProgressToolbarState
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadItem
 import moe.rukamori.archivetune.ui.utils.HeaderDownloadState
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.utils.hasActiveDownloads
 import moe.rukamori.archivetune.ui.utils.headerDownloadState
 import moe.rukamori.archivetune.ui.utils.sendAddMissingDownloads
+import moe.rukamori.archivetune.ui.utils.sendPauseDownloads
 import moe.rukamori.archivetune.ui.utils.sendRemoveDownloads
+import moe.rukamori.archivetune.ui.utils.sendResumeDownloads
 import moe.rukamori.archivetune.utils.rememberPreference
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -159,6 +164,86 @@ fun SpotifyLikedSongsScreen(
                 (1f - (offset / 600f)).coerceIn(0f, 1f)
             } else {
                 0f
+            }
+        }
+    }
+
+    val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
+
+    var resolvedSongs by remember { mutableStateOf<List<HeaderDownloadItem>?>(null) }
+    var resolvingForDownload by remember { mutableStateOf(false) }
+    var resolvedCount by remember { mutableStateOf(0) }
+    var totalCount by remember { mutableStateOf(0) }
+    var resolveError by remember { mutableStateOf(false) }
+    var downloadsToolbarDismissed by remember { mutableStateOf(false) }
+    var downloadsPaused by remember { mutableStateOf(false) }
+
+    val downloadState =
+        resolvedSongs
+            ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
+            ?: HeaderDownloadState.None
+
+    LaunchedEffect(resolveError) {
+        if (resolveError) {
+            Toast.makeText(context, R.string.download_resolve_failed, Toast.LENGTH_SHORT).show()
+            resolveError = false
+        }
+    }
+
+    suspend fun resolveForDownload(
+        onBatchResolved: (List<HeaderDownloadItem>) -> Unit = {},
+    ): List<HeaderDownloadItem> {
+        val semaphore = Semaphore(4)
+        totalCount = tracks.size
+        resolvedCount = 0
+        return coroutineScope {
+            val deferreds =
+                tracks.map { track ->
+                    async(Dispatchers.IO) {
+                        semaphore.withPermit {
+                            SpotifyPlaybackResolver
+                                .resolveToMetadata(track, database)
+                                ?.let { HeaderDownloadItem(id = it.id, title = it.title) }
+                        }
+                    }
+                }
+            val results = mutableListOf<HeaderDownloadItem>()
+            val sentIds = mutableSetOf<String>()
+            var batch = mutableListOf<HeaderDownloadItem>()
+            for (deferred in deferreds) {
+                val item = deferred.await()
+                resolvedCount += 1
+                if (item != null) {
+                    results += item
+                    batch += item
+                }
+                if (batch.size >= 8) {
+                    val pending = batch.filter { it.id !in sentIds }
+                    sentIds += pending.map { it.id }
+                    onBatchResolved(pending)
+                    batch = mutableListOf()
+                }
+            }
+            if (batch.isNotEmpty()) {
+                val pending = batch.filter { it.id !in sentIds }
+                sentIds += pending.map { it.id }
+                onBatchResolved(pending)
+            }
+            results.distinctBy { it.id }
+        }
+    }
+
+    LaunchedEffect(spotifyLikedKeepOffline, tracks) {
+        if (spotifyLikedKeepOffline && resolvedSongs == null) {
+            resolvingForDownload = true
+            try {
+                resolvedSongs = resolveForDownload()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                resolveError = true
+            } finally {
+                resolvingForDownload = false
             }
         }
     }
@@ -296,88 +381,7 @@ fun SpotifyLikedSongsScreen(
             ) {
                 if (!isSearching) {
                     item(key = "header") {
-                        val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
-                        var resolvedSongs by remember { mutableStateOf<List<HeaderDownloadItem>?>(null) }
-                        var resolvingForDownload by remember { mutableStateOf(false) }
-                        var resolvedCount by remember { mutableStateOf(0) }
-                        var totalCount by remember { mutableStateOf(0) }
-                        var resolveError by remember { mutableStateOf(false) }
                         var showRemoveDownloadDialog by remember { mutableStateOf(false) }
-
-                        val downloadState =
-                            resolvedSongs
-                                ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
-                                ?: HeaderDownloadState.None
-
-                        LaunchedEffect(resolveError) {
-                            if (resolveError) {
-                                Toast.makeText(context, R.string.download_resolve_failed, Toast.LENGTH_SHORT).show()
-                                resolveError = false
-                            }
-                        }
-
-                        suspend fun resolveForDownload(
-                            onBatchResolved: (List<HeaderDownloadItem>) -> Unit = {},
-                        ): List<HeaderDownloadItem> {
-                            val semaphore = Semaphore(4)
-                            val channel = Channel<HeaderDownloadItem?>(Channel.UNLIMITED)
-                            val results = mutableListOf<HeaderDownloadItem>()
-                            val sentIds = mutableSetOf<String>()
-                            var batch = mutableListOf<HeaderDownloadItem>()
-                            totalCount = tracks.size
-                            resolvedCount = 0
-                            kotlinx.coroutines.coroutineScope {
-                                launch {
-                                    tracks
-                                        .map { track ->
-                                            async {
-                                                semaphore.withPermit {
-                                                    channel.send(
-                                                        SpotifyPlaybackResolver
-                                                            .resolveToMetadata(track, database)
-                                                            ?.let { HeaderDownloadItem(id = it.id, title = it.title) },
-                                                    )
-                                                }
-                                            }
-                                        }.awaitAll()
-                                    channel.close()
-                                }
-                                for (item in channel) {
-                                    resolvedCount += 1
-                                    if (item != null) {
-                                        results += item
-                                        batch += item
-                                    }
-                                    if (batch.size >= 8) {
-                                        val pending = batch.filter { it.id !in sentIds }
-                                        sentIds += pending.map { it.id }
-                                        onBatchResolved(pending)
-                                        batch = mutableListOf()
-                                    }
-                                }
-                                if (batch.isNotEmpty()) {
-                                    val pending = batch.filter { it.id !in sentIds }
-                                    sentIds += pending.map { it.id }
-                                    onBatchResolved(pending)
-                                }
-                            }
-                            return results.distinctBy { it.id }
-                        }
-
-                        LaunchedEffect(spotifyLikedKeepOffline, tracks) {
-                            if (spotifyLikedKeepOffline && resolvedSongs == null) {
-                                resolvingForDownload = true
-                                try {
-                                    resolvedSongs = resolveForDownload()
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    resolveError = true
-                                } finally {
-                                    resolvingForDownload = false
-                                }
-                            }
-                        }
 
                         SpotifyLikedHeaderHero(
                             total = total,
@@ -393,6 +397,8 @@ fun SpotifyLikedSongsScreen(
                             downloadState = downloadState,
                             onKeepOfflineChange = { enabled ->
                                 if (enabled) {
+                                    downloadsToolbarDismissed = false
+                                    downloadsPaused = false
                                     setSpotifyLikedKeepOffline(true)
                                     coroutineScope.launch(Dispatchers.IO) {
                                         resolvingForDownload = true
@@ -460,6 +466,8 @@ fun SpotifyLikedSongsScreen(
                     mediaMetadata = mediaMetadata,
                     resolvingTrackId = resolvingTrackId,
                     isPlaying = isPlaying,
+                    downloads = downloads,
+                    database = database,
                     onTrackClick = { track, index, trackIsActive ->
                         if (trackIsActive) {
                             playerConnection?.player?.togglePlayPause()
@@ -484,6 +492,40 @@ fun SpotifyLikedSongsScreen(
                 scrollState = lazyListState,
                 headerItems = if (!isSearching) 1 else 0,
             )
+
+            AnimatedVisibility(
+                visible = downloadState is HeaderDownloadState.Partial && !downloadsToolbarDismissed,
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(LocalPlayerAwareWindowInsets.current.asPaddingValues())
+                        .padding(bottom = 16.dp),
+            ) {
+                val partialState = downloadState as? HeaderDownloadState.Partial
+                if (partialState != null) {
+                    val songIds = remember(resolvedSongs) { resolvedSongs?.map { it.id } ?: emptyList() }
+                    DownloadProgressFloatingToolbar(
+                        state =
+                            DownloadProgressToolbarState(
+                                progress = partialState.progress,
+                                paused = downloadsPaused,
+                                canPause = hasActiveDownloads(songIds, downloads),
+                            ),
+                        onPauseResume = {
+                            if (downloadsPaused) {
+                                sendResumeDownloads(context, songIds)
+                            } else {
+                                sendPauseDownloads(context, songIds)
+                            }
+                            downloadsPaused = !downloadsPaused
+                        },
+                        onDismiss = {
+                            downloadsPaused = false
+                            downloadsToolbarDismissed = true
+                        },
+                    )
+                }
+            }
         }
 
         SpotifyLikedTopBar(

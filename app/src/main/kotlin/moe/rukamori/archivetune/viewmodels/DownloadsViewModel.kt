@@ -50,6 +50,7 @@ data class DownloadQueueItem(
     val percentDownloaded: Float,
     val bytesDownloaded: Long,
     val contentLength: Long,
+    val startTimeMs: Long,
 ) {
     val isActive: Boolean
         get() =
@@ -103,6 +104,7 @@ class DownloadsViewModel
                             percentDownloaded = download.percentDownloaded,
                             bytesDownloaded = download.bytesDownloaded,
                             contentLength = download.contentLength,
+                            startTimeMs = download.startTimeMs,
                         )
                     }
                     .filter { item ->
@@ -116,6 +118,7 @@ class DownloadsViewModel
                     .sortedWith(
                         compareByDescending<DownloadQueueItem> { it.isActive }
                             .thenByDescending { it.isFailed }
+                            .thenBy { it.startTimeMs }
                             .thenBy { it.title.lowercase() },
                     )
             }.flowOn(Dispatchers.IO)
