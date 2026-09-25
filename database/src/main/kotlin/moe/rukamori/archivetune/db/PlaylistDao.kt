@@ -279,6 +279,9 @@ interface PlaylistDao {
     @Query("SELECT DISTINCT songId FROM playlist_song_map")
     suspend fun playlistSongIds(): List<String>
 
+    @Query("SELECT EXISTS(SELECT 1 FROM playlist_song_map m JOIN playlist p ON p.id = m.playlistId WHERE m.songId = :songId AND p.keepOffline = 1)")
+    suspend fun isSongInKeepOfflinePlaylist(songId: String): Boolean
+
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE songId = :songId")
     fun playlistSongMaps(songId: String): List<PlaylistSongMap>

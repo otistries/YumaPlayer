@@ -18,6 +18,7 @@ import moe.rukamori.archivetune.constants.AudioNormalizationKey
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.FlacQuality
 import moe.rukamori.archivetune.constants.FlacStreamingQualityKey
+import moe.rukamori.archivetune.constants.OfflineOnlyKey
 import moe.rukamori.archivetune.constants.PlaybackSource
 import moe.rukamori.archivetune.constants.PlayerStreamClient
 import moe.rukamori.archivetune.db.entities.FormatEntity
@@ -96,6 +97,24 @@ internal fun MusicService.resolvePlaybackDataSpec(
         if (isFullyCached) {
             scope.launch(Dispatchers.IO) { recoverSong(mediaId) }
             return dataSpec
+        }
+    }
+
+    val offlineOnly = runBlocking(Dispatchers.IO) { dataStore.get(OfflineOnlyKey, false) }
+    if (offlineOnly) {
+        val isFullyCached =
+            requiredCachedLength != null &&
+                getContinuousCachedLength(
+                    mediaId = mediaId,
+                    position = dataSpec.position,
+                    requestedLength = requiredCachedLength,
+                ) >= requiredCachedLength
+        if (!isFullyCached) {
+            throw PlaybackException(
+                getString(R.string.error_no_stream),
+                null,
+                PlaybackException.ERROR_CODE_REMOTE_ERROR,
+            )
         }
     }
 

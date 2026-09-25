@@ -15,6 +15,8 @@ data class PlaylistOfflineStatus(
     val downloaded: Int,
     val failed: Int,
     val active: Int,
+    val bytesDownloaded: Long = 0,
+    val spotifyId: String? = null,
 ) {
     val isFullyOffline: Boolean
         get() = total > 0 && downloaded == total
@@ -28,14 +30,21 @@ data class PlaylistOfflineStatus(
             downloads: Map<String, Int>,
             name: String,
             playlistId: String,
+            bytesBySongId: Map<String, Long> = emptyMap(),
+            spotifyId: String? = null,
         ): PlaylistOfflineStatus {
             val distinctIds = songIds.distinct()
             var downloaded = 0
             var failed = 0
             var active = 0
+            var bytes = 0L
             distinctIds.forEach { songId ->
                 when (downloads[songId]) {
-                    Download.STATE_COMPLETED -> downloaded++
+                    Download.STATE_COMPLETED -> {
+                        downloaded++
+                        bytes += (bytesBySongId[songId] ?: 0L).coerceAtLeast(0L)
+                    }
+
                     Download.STATE_FAILED -> failed++
                     Download.STATE_QUEUED,
                     Download.STATE_DOWNLOADING,
@@ -50,6 +59,8 @@ data class PlaylistOfflineStatus(
                 downloaded = downloaded,
                 failed = failed,
                 active = active,
+                bytesDownloaded = bytes,
+                spotifyId = spotifyId,
             )
         }
     }

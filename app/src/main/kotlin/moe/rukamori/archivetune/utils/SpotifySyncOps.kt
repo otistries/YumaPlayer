@@ -354,6 +354,99 @@ class SpotifySyncOps
             }
         }
 
+        suspend fun syncSingleSpotifyPlaylist(spotifyPlaylistId: String): Boolean =
+            state.spotifyPlaylistSyncMutex.withLock {
+                runCatching {
+                    val session = state.spotifyRepository.restoreSession()
+                    if (!session.isAuthenticated) {
+                        Timber.w("Skipping syncSingleSpotifyPlaylist - user not logged in to Spotify")
+                        return@runCatching false
+                    }
+
+                    val playlistEntity =
+                        state.database.playlistBySpotifyId(spotifyPlaylistId).firstOrNull()?.playlist
+                            ?: run {
+                                val remotePlaylist =
+                                    state.spotifyRepository.refreshPlaylists().firstOrNull { it.id == spotifyPlaylistId }
+                                        ?: return@runCatching false
+                                val newEntity =
+                                    PlaylistEntity(
+                                        name = remotePlaylist.name,
+                                        spotifyId = remotePlaylist.id,
+                                        thumbnailUrl = SpotifyMapper.getPlaylistThumbnail(remotePlaylist),
+                                        remoteSongCount = remotePlaylist.tracks?.total,
+                                        isEditable = false,
+                                        bookmarkedAt = LocalDateTime.now(),
+                                    )
+                                state.database.insert(newEntity)
+                                state.database.playlistBySpotifyId(spotifyPlaylistId).firstOrNull()?.playlist ?: newEntity
+                            }
+
+                    val tracks = state.spotifyRepository.playlistTracks(spotifyPlaylistId)
+                    val resolveSemaphore = Semaphore(4)
+                    val resolvedTracks =
+                        coroutineScope {
+                            tracks
+                                .map { track ->
+                                    async {
+                                        resolveSemaphore.withPermit {
+                                            val metadata = SpotifyPlaybackResolver.resolveToMetadata(track, state.database)
+                                            if (metadata != null) track to metadata else null
+                                        }
+                                    }
+                                }.awaitAll()
+                                .filterNotNull()
+                        }
+
+                    state.database.withTransaction {
+                        state.database.clearPlaylist(playlistEntity.id)
+                        resolvedTracks.forEachIndexed { idx, (track, metadata) ->
+                            val dbSong = state.database.getSongByIdBlocking(metadata.id)
+                            if (dbSong == null) {
+                                state.database.insert(metadata)
+                            } else {
+                                state.database.update(dbSong, metadata)
+                            }
+
+                            state.database.insert(
+                                PlaylistSongMap(
+                                    playlistId = playlistEntity.id,
+                                    songId = metadata.id,
+                                    position = idx,
+                                ),
+                            )
+
+                            state.database.insert(
+                                SpotifyMatchEntity(
+                                    spotifyId = track.id,
+                                    youtubeId = metadata.id,
+                                    title = track.name,
+                                    artist = track.artists.joinToString(" ") { it.name },
+                                    matchScore = 1.0,
+                                ),
+                            )
+                        }
+                    }
+
+                    state.database.update(
+                        playlistEntity.copy(
+                            remoteSongCount = resolvedTracks.size,
+                            lastUpdateTime = LocalDateTime.now(),
+                        ),
+                    )
+
+                    if (playlistEntity.keepOffline) {
+                        enqueueKeepOfflineDownloads(
+                            resolvedTracks = resolvedTracks.map { it.second },
+                        )
+                    }
+                    true
+                }.getOrElse { e ->
+                    Timber.e(e, "Error during syncSingleSpotifyPlaylist")
+                    false
+                }
+            }
+
         fun trySpotifyAutoSync(authoritative: Boolean = false) {
             if (!isAutoSyncInFlight.compareAndSet(false, true)) {
                 Timber.d("Spotify auto-sync already in flight, skipping")

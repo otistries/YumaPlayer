@@ -35,11 +35,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import moe.rukamori.archivetune.constants.AudioQuality
 import moe.rukamori.archivetune.constants.AudioQualityKey
+import moe.rukamori.archivetune.constants.ExportKeepOfflineKey
 import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.db.entities.FormatEntity
 import moe.rukamori.archivetune.db.entities.SongEntity
 import moe.rukamori.archivetune.di.DownloadCache
 import moe.rukamori.archivetune.di.PlayerCache
+import moe.rukamori.archivetune.download.FlacDownloader
 import moe.rukamori.archivetune.extensions.toEnum
 import moe.rukamori.archivetune.innertube.YouTube
 import moe.rukamori.archivetune.utils.AuthScopedCacheValue
@@ -50,6 +52,7 @@ import moe.rukamori.archivetune.utils.dataStore
 import moe.rukamori.archivetune.utils.getAsync
 import moe.rukamori.archivetune.utils.isLowDataModeActive
 import moe.rukamori.archivetune.utils.retryWithoutPlaybackLoginContext
+import kotlinx.coroutines.flow.first
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import timber.log.Timber
@@ -227,9 +230,19 @@ class DownloadUtil
                             download: Download,
                             finalException: Exception?,
                         ) {
+                            val previousState = downloads.value[download.request.id]?.state
                             downloads.update { map ->
                                 map.toMutableMap().apply {
                                     set(download.request.id, download)
+                                }
+                            }
+                            if (download.state == Download.STATE_COMPLETED && previousState != null && previousState != Download.STATE_COMPLETED) {
+                                downloadScope.launch {
+                                    runCatching {
+                                        maybeExportKeepOffline(download.request.id)
+                                    }.onFailure {
+                                        Timber.w(it, "Failed to export keep-offline playlist song %s", download.request.id)
+                                    }
                                 }
                             }
                         }
@@ -262,6 +275,20 @@ class DownloadUtil
         }
 
         fun getDownload(songId: String): Flow<Download?> = downloads.map { it[songId] }
+
+        private suspend fun maybeExportKeepOffline(songId: String) {
+            val exportEnabled = context.dataStore.getAsync(ExportKeepOfflineKey, false)
+            if (!exportEnabled) return
+            if (!database.isSongInKeepOfflinePlaylist(songId)) return
+            val song = database.song(songId).first() ?: return
+            FlacDownloader.downloadFlac(
+                context,
+                songId,
+                song.song.title,
+                song.artists.mapNotNull { it.name.takeIf(String::isNotBlank) }.joinToString(", "),
+                song.song.albumName.orEmpty(),
+            )
+        }
 
         /**
          * Re-enqueues downloads left in [Download.STATE_FAILED] by a previous session.

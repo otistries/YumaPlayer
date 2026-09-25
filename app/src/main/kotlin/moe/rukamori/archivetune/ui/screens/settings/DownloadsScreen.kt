@@ -4,12 +4,13 @@
  * GPL-3.0 License | Contributors: see git history
  */
 
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package moe.rukamori.archivetune.ui.screens.settings
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +52,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.ui.component.EmptyPlaceholder
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.ui.utils.backToMain
+import moe.rukamori.archivetune.ui.utils.formatFileSize
 import moe.rukamori.archivetune.utils.PlaylistOfflineStatus
 import moe.rukamori.archivetune.viewmodels.DownloadQueueFilter
 import moe.rukamori.archivetune.viewmodels.DownloadQueueItem
@@ -142,6 +144,7 @@ fun DownloadsScreen(
                 PlaylistOfflineRow(
                     status = status,
                     onClick = { navController.navigate("local_playlist/${status.playlistId}") },
+                    onLongClick = { status.spotifyId?.let { viewModel.syncPlaylist(it) } },
                 )
             }
         }
@@ -298,12 +301,16 @@ private fun DownloadQueueRow(
 private fun PlaylistOfflineRow(
     status: PlaylistOfflineStatus,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
 ) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                )
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -317,18 +324,24 @@ private fun PlaylistOfflineRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            val baseText =
+                when {
+                    status.isFullyOffline -> stringResource(R.string.offline_playlist_fully_offline)
+                    status.failed > 0 ->
+                        stringResource(R.string.offline_playlist_failures, status.failed)
+                    else ->
+                        stringResource(
+                            R.string.offline_playlist_progress,
+                            status.downloaded,
+                            status.total,
+                        )
+                }
             Text(
                 text =
-                    when {
-                        status.isFullyOffline -> stringResource(R.string.offline_playlist_fully_offline)
-                        status.failed > 0 ->
-                            stringResource(R.string.offline_playlist_failures, status.failed)
-                        else ->
-                            stringResource(
-                                R.string.offline_playlist_progress,
-                                status.downloaded,
-                                status.total,
-                            )
+                    if (status.bytesDownloaded > 0) {
+                        "$baseText · ${formatFileSize(status.bytesDownloaded)}"
+                    } else {
+                        baseText
                     },
                 style = MaterialTheme.typography.bodySmall,
                 color =

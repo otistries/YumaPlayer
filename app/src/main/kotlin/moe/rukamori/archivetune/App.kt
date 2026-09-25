@@ -22,6 +22,11 @@ import coil3.request.CachePolicy
 import coil3.request.allowHardware
 import coil3.request.crossfade
 import dagger.hilt.android.HiltAndroidApp
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -46,6 +51,7 @@ import moe.rukamori.archivetune.ui.player.CanvasArtworkPlaybackCache
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPalette
 import moe.rukamori.archivetune.ui.theme.ThemeSeedPaletteCodec
 import moe.rukamori.archivetune.utils.OfflineResyncer
+import moe.rukamori.archivetune.utils.OfflineSyncWorker
 import moe.rukamori.archivetune.utils.PreferenceStore
 import moe.rukamori.archivetune.utils.ProxyAuth
 import moe.rukamori.archivetune.utils.ProxyUtils
@@ -64,6 +70,7 @@ import java.io.PrintWriter
 import java.io.StringWriter
 import java.net.Proxy
 import java.util.*
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.io.File
 import moe.rukamori.archivetune.obfuscator.MoriCipherConfig
@@ -176,6 +183,25 @@ class App :
             } catch (e: Exception) {
                 Timber.e(e, "Error enqueueing missing keep-offline downloads on startup")
             }
+        }
+
+        runCatching {
+            val constraints =
+                Constraints
+                    .Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            val request =
+                PeriodicWorkRequestBuilder<OfflineSyncWorker>(6, TimeUnit.HOURS)
+                    .setConstraints(constraints)
+                    .build()
+            WorkManager.getInstance(this@App).enqueueUniquePeriodicWork(
+                "offline_sync_work",
+                ExistingPeriodicWorkPolicy.KEEP,
+                request,
+            )
+        }.onFailure { e ->
+            Timber.w(e, "Failed to schedule offline sync worker")
         }
 
         applicationScope.launch(Dispatchers.IO) {

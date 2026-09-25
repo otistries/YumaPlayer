@@ -59,6 +59,8 @@ class SyncUtils
 
         suspend fun syncSpotifyPlaylists(authoritative: Boolean = false) = spotifySyncOps.syncSpotifyPlaylists(authoritative)
 
+        suspend fun syncSingleSpotifyPlaylist(spotifyPlaylistId: String) = spotifySyncOps.syncSingleSpotifyPlaylist(spotifyPlaylistId)
+
         suspend fun syncSpotifyLikedSongs(
             authoritative: Boolean = false,
             onProgress: (completedSongs: Int, totalSongs: Int) -> Unit = { _, _ -> },

@@ -8,6 +8,7 @@
 
 package moe.rukamori.archivetune.ui.screens.library
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,14 +45,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -292,6 +299,9 @@ fun SpotifyLikedSongsScreen(
                         val downloads by downloadUtil.downloads.collectAsStateWithLifecycle()
                         var resolvedSongs by remember { mutableStateOf<List<HeaderDownloadItem>?>(null) }
                         var resolvingForDownload by remember { mutableStateOf(false) }
+                        var resolvedCount by remember { mutableStateOf(0) }
+                        var totalCount by remember { mutableStateOf(0) }
+                        var resolveError by remember { mutableStateOf(false) }
                         var showRemoveDownloadDialog by remember { mutableStateOf(false) }
 
                         val downloadState =
@@ -299,22 +309,59 @@ fun SpotifyLikedSongsScreen(
                                 ?.let { items -> headerDownloadState(items.map { it.id }, downloads) }
                                 ?: HeaderDownloadState.None
 
-                        suspend fun resolveForDownload(): List<HeaderDownloadItem> {
-                            val semaphore = Semaphore(4)
-                            return kotlinx.coroutines.coroutineScope {
-                                tracks
-                                    .map { track ->
-                                        async {
-                                            semaphore.withPermit {
-                                                SpotifyPlaybackResolver
-                                                    .resolveToMetadata(track, database)
-                                                    ?.let { HeaderDownloadItem(id = it.id, title = it.title) }
-                                            }
-                                        }
-                                    }.awaitAll()
-                                    .filterNotNull()
-                                    .distinctBy { it.id }
+                        LaunchedEffect(resolveError) {
+                            if (resolveError) {
+                                Toast.makeText(context, R.string.download_resolve_failed, Toast.LENGTH_SHORT).show()
+                                resolveError = false
                             }
+                        }
+
+                        suspend fun resolveForDownload(
+                            onBatchResolved: (List<HeaderDownloadItem>) -> Unit = {},
+                        ): List<HeaderDownloadItem> {
+                            val semaphore = Semaphore(4)
+                            val channel = Channel<HeaderDownloadItem?>(Channel.UNLIMITED)
+                            val results = mutableListOf<HeaderDownloadItem>()
+                            val sentIds = mutableSetOf<String>()
+                            var batch = mutableListOf<HeaderDownloadItem>()
+                            totalCount = tracks.size
+                            resolvedCount = 0
+                            kotlinx.coroutines.coroutineScope {
+                                launch {
+                                    tracks
+                                        .map { track ->
+                                            async {
+                                                semaphore.withPermit {
+                                                    channel.send(
+                                                        SpotifyPlaybackResolver
+                                                            .resolveToMetadata(track, database)
+                                                            ?.let { HeaderDownloadItem(id = it.id, title = it.title) },
+                                                    )
+                                                }
+                                            }
+                                        }.awaitAll()
+                                    channel.close()
+                                }
+                                for (item in channel) {
+                                    resolvedCount += 1
+                                    if (item != null) {
+                                        results += item
+                                        batch += item
+                                    }
+                                    if (batch.size >= 8) {
+                                        val pending = batch.filter { it.id !in sentIds }
+                                        sentIds += pending.map { it.id }
+                                        onBatchResolved(pending)
+                                        batch = mutableListOf()
+                                    }
+                                }
+                                if (batch.isNotEmpty()) {
+                                    val pending = batch.filter { it.id !in sentIds }
+                                    sentIds += pending.map { it.id }
+                                    onBatchResolved(pending)
+                                }
+                            }
+                            return results.distinctBy { it.id }
                         }
 
                         LaunchedEffect(spotifyLikedKeepOffline, tracks) {
@@ -322,6 +369,10 @@ fun SpotifyLikedSongsScreen(
                                 resolvingForDownload = true
                                 try {
                                     resolvedSongs = resolveForDownload()
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    resolveError = true
                                 } finally {
                                     resolvingForDownload = false
                                 }
@@ -346,13 +397,19 @@ fun SpotifyLikedSongsScreen(
                                     coroutineScope.launch(Dispatchers.IO) {
                                         resolvingForDownload = true
                                         try {
-                                            val items = resolveForDownload()
+                                            val items =
+                                                resolveForDownload { batch ->
+                                                    sendAddMissingDownloads(
+                                                        context = context,
+                                                        songs = batch,
+                                                        downloads = downloadUtil.downloads.value,
+                                                    )
+                                                }
                                             resolvedSongs = items
-                                            sendAddMissingDownloads(
-                                                context = context,
-                                                songs = items,
-                                                downloads = downloadUtil.downloads.value,
-                                            )
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            resolveError = true
                                         } finally {
                                             resolvingForDownload = false
                                         }
@@ -366,6 +423,19 @@ fun SpotifyLikedSongsScreen(
                                     .fillMaxWidth()
                                     .padding(top = systemBarsTopPadding + AppBarHeight),
                         )
+
+                        if (resolvingForDownload) {
+                            Text(
+                                text = stringResource(R.string.download_resolving, resolvedCount, totalCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                            )
+                        }
 
                         LocalPlaylistRemoveDownloadDialog(
                             show = showRemoveDownloadDialog,
