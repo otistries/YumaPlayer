@@ -32,6 +32,7 @@ import okhttp3.Headers.Companion.toHeaders
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
+import moe.rukamori.archivetune.innertube.YouTube
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.Collections
@@ -84,11 +85,15 @@ object BotGuardTokenGenerator {
     /** Maximum number of cached player tokens. */
     private const val PLAYER_TOKEN_CACHE_SIZE = 200
 
-    private val httpClient =
-        OkHttpClient
-            .Builder()
-            .callTimeout(20, TimeUnit.SECONDS)
-            .build()
+    // Honor the user-configured YouTube proxy so BotGuard works on networks
+    // where YouTube is blocked (same proxy as InnerTube/stream clients).
+    private val httpClient: OkHttpClient
+        get() =
+            OkHttpClient
+                .Builder()
+                .callTimeout(20, TimeUnit.SECONDS)
+                .apply { YouTube.proxy?.let { proxy(it) } }
+                .build()
 
     // ── state ────────────────────────────────────────────────────────
     private var appContext: Context? = null
