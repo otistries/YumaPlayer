@@ -284,6 +284,8 @@ fun SpotifyTrackListItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     showSongIconPlaceholder: Boolean = true,
+    downloadState: Int? = null,
+    downloadProgress: Float = -1f,
     trailingContent: @Composable RowScope.() -> Unit = {},
 ) {
     val duration =
@@ -302,16 +304,23 @@ fun SpotifyTrackListItem(
         subtitle = subtitle,
         badges = badges,
         thumbnailContent = {
-            ItemThumbnail(
-                thumbnailUrl = SpotifyMapper.getTrackThumbnailMedium(track)?.resize(200, 200),
-                albumIndex = albumIndex,
-                isSelected = isSelected,
-                isActive = isActive,
-                isPlaying = isPlaying,
-                shape = RoundedCornerShape(ThumbnailCornerRadius),
-                placeholderIconRes = if (showSongIconPlaceholder) R.drawable.music_note else null,
-                modifier = Modifier.size(ListThumbnailSize),
-            )
+            Box {
+                ItemThumbnail(
+                    thumbnailUrl = SpotifyMapper.getTrackThumbnailMedium(track)?.resize(200, 200),
+                    albumIndex = albumIndex,
+                    isSelected = isSelected,
+                    isActive = isActive,
+                    isPlaying = isPlaying,
+                    shape = RoundedCornerShape(ThumbnailCornerRadius),
+                    placeholderIconRes = if (showSongIconPlaceholder) R.drawable.music_note else null,
+                    modifier = Modifier.size(ListThumbnailSize),
+                )
+                ItemThumbnailDownloadOverlay(
+                    state = downloadState,
+                    percent = downloadProgress,
+                    modifier = Modifier.align(Alignment.BottomStart),
+                )
+            }
         },
         trailingContent = trailingContent,
         modifier = modifier,

@@ -22,11 +22,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -240,6 +242,61 @@ fun ItemDownloadBadge(
         }
 
         else -> { /* no icon */ }
+    }
+}
+
+@Composable
+fun ItemThumbnailDownloadOverlay(
+    state: Int?,
+    percent: Float = -1f,
+    modifier: Modifier = Modifier,
+) {
+    when (state) {
+        STATE_COMPLETED -> {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                shadowElevation = 2.dp,
+                modifier = modifier.size(18.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.offline),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(3.dp),
+                )
+            }
+        }
+
+        STATE_QUEUED, STATE_DOWNLOADING -> {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                shadowElevation = 2.dp,
+                modifier = modifier.size(18.dp),
+            ) {
+                if (percent > 0f) {
+                    CircularProgressIndicator(
+                        progress = { percent / 100f },
+                        modifier =
+                            Modifier
+                                .padding(2.dp)
+                                .size(14.dp),
+                        strokeWidth = 2.dp,
+                        trackColor = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                } else {
+                    CircularWavyProgressIndicator(
+                        modifier =
+                            Modifier
+                                .padding(2.dp)
+                                .size(14.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
+            }
+        }
     }
 }
 

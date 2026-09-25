@@ -18,12 +18,16 @@ import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.exoplayer.offline.Download
 import moe.rukamori.archivetune.R
+import moe.rukamori.archivetune.db.MusicDatabase
 import moe.rukamori.archivetune.models.MediaMetadata
 import moe.rukamori.archivetune.spotify.SpotifyMapper
 import moe.rukamori.archivetune.spotify.models.SpotifyTrack
@@ -42,6 +46,8 @@ fun LazyListScope.spotifyLikedTrackList(
     mediaMetadata: MediaMetadata?,
     resolvingTrackId: String?,
     isPlaying: Boolean,
+    downloads: Map<String, Download>,
+    database: MusicDatabase,
     onTrackClick: (track: SpotifyTrack, index: Int, isResolved: Boolean) -> Unit,
 ) {
     if (isLoading && tracksIsEmpty) {
@@ -97,10 +103,16 @@ fun LazyListScope.spotifyLikedTrackList(
             }
         val trackIsResolving = resolvingTrackId == track.id
 
+        val spotifyMatch by
+            remember(track.id) { database.spotifyMatch(track.id) }.collectAsStateWithLifecycle(initialValue = null)
+        val trackDownload = spotifyMatch?.youtubeId?.let { downloads[it] }
+
         SpotifyTrackListItem(
             track = track,
             isActive = trackIsActive || trackIsResolving,
             isPlaying = isPlaying && !trackIsResolving,
+            downloadState = trackDownload?.state,
+            downloadProgress = trackDownload?.percentDownloaded ?: -1f,
             trailingContent = {
                 if (trackIsResolving) {
                     CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
