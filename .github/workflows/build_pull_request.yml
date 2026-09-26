@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - "feat/**"
+      - "main"
 
 jobs:
   build:
@@ -69,3 +70,28 @@ jobs:
             app/build/outputs/apk/gmsMobileUniversal/debug/*.apk
             app/build/outputs/apk/mobile/universal/debug/*.apk
             app/build/outputs/apk/mobileUniversal/debug/*.apk
+
+  release_latest:
+    name: Attach APK to rolling latest release
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifact
+        uses: actions/download-artifact@v8
+        with:
+          pattern: app-mobile-universal-debug-pr-*
+          merge-multiple: true
+          path: release_apk
+
+      - name: Publish rolling latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: true
+          body: |
+            Automated debug build of `${{ github.sha }}` from `main`.
+          files: release_apk/*.apk
