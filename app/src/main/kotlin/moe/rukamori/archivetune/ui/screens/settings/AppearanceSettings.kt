@@ -39,6 +39,8 @@ import moe.rukamori.archivetune.LocalPlayerAwareWindowInsets
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppFontPreference
 import moe.rukamori.archivetune.constants.ArchiveTuneCanvasKey
+import moe.rukamori.archivetune.constants.BlurNavBarKey
+import moe.rukamori.archivetune.constants.BlurRadiusKey
 import moe.rukamori.archivetune.constants.ChipSortTypeKey
 import moe.rukamori.archivetune.constants.CustomFontNameKey
 import moe.rukamori.archivetune.constants.CustomFontUriKey
@@ -63,6 +65,7 @@ import moe.rukamori.archivetune.constants.ShowTagsInLibraryKey
 import moe.rukamori.archivetune.constants.SplashOverlayEnabledKey
 import moe.rukamori.archivetune.constants.SwipeToSongKey
 import moe.rukamori.archivetune.ui.component.IconButton
+import moe.rukamori.archivetune.ui.settings.SettingsDimensions
 import moe.rukamori.archivetune.ui.theme.CustomFontLoader
 import moe.rukamori.archivetune.ui.theme.TestThemeWrapper
 import moe.rukamori.archivetune.ui.theme.ThemePreviews
@@ -91,6 +94,12 @@ fun AppearanceSettings(navController: NavController) {
             defaultValue = DarkMode.AUTO,
         )
     val (pureBlack, onPureBlackChange) = rememberPreference(PureBlackKey, defaultValue = false)
+    val (blurNavBar, onBlurNavBarChange) = rememberPreference(BlurNavBarKey, defaultValue = true)
+    val (blurRadius, onBlurRadiusChange) =
+        rememberPreference(
+            BlurRadiusKey,
+            defaultValue = SettingsDimensions.BlurRadiusDefault,
+        )
     val (disableAnimations, onDisableAnimationsChange) =
         rememberPreference(
             DisableAnimationsKey,
@@ -217,6 +226,8 @@ fun AppearanceSettings(navController: NavController) {
             darkMode = darkMode,
             useDarkTheme = useDarkTheme,
             pureBlack = pureBlack,
+            blurNavBar = blurNavBar,
+            blurRadius = blurRadius,
             disableAnimations = disableAnimations,
             splashOverlayEnabled = splashOverlayEnabled,
             archiveTuneCanvas = archiveTuneCanvas,
@@ -248,6 +259,8 @@ fun AppearanceSettings(navController: NavController) {
                 onRandomThemeOnStartupChange = onRandomThemeOnStartupChange,
                 onDarkModeChange = onDarkModeChange,
                 onPureBlackChange = onPureBlackChange,
+                onBlurNavBarChange = onBlurNavBarChange,
+                onBlurRadiusChange = onBlurRadiusChange,
                 onDisableAnimationsChange = onDisableAnimationsChange,
                 onSplashOverlayEnabledChange = onSplashOverlayEnabledChange,
                 onArchiveTuneCanvasChange = onArchiveTuneCanvasChange,

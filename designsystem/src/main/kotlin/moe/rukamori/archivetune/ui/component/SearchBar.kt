@@ -39,7 +39,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SearchBarColors
@@ -56,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -83,9 +83,18 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.lerp
+import dev.chrisbanes.haze.ExperimentalHazeApi
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import moe.rukamori.archivetune.constants.AppBarHeight
+import moe.rukamori.archivetune.ui.settings.SettingsDimensions
+import moe.rukamori.archivetune.ui.theme.glassStroke
 import kotlin.math.max
 
+@OptIn(ExperimentalHazeApi::class)
 @ExperimentalMaterial3Api
 @Composable
 fun TopSearch(
@@ -109,6 +118,10 @@ fun TopSearch(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     focusRequester: FocusRequester = remember { FocusRequester() },
     leftFocusRequester: FocusRequester? = null,
+    hazeState: HazeState? = null,
+    pureBlack: Boolean = false,
+    blurRadius: Float = SettingsDimensions.BlurRadiusDefault,
+    showBorder: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val animationProgress: Float by animateFloatAsState(
@@ -155,6 +168,18 @@ fun TopSearch(
         }
     }
 
+    val containerColor = if (pureBlack) Color.Black else colors.containerColor
+    val fixedTintAlpha = if (pureBlack) SettingsDimensions.HazePureBlackTintAlpha else SettingsDimensions.HazeDefaultTintAlpha
+    val hazeStyle =
+        remember(containerColor, blurRadius, pureBlack) {
+            HazeDefaults.style(
+                backgroundColor = containerColor,
+                tint = HazeTint(containerColor.copy(alpha = fixedTintAlpha)),
+                blurRadius = blurRadius.dp,
+                noiseFactor = SettingsDimensions.HazeNoiseFactor,
+            )
+        }
+
     BoxWithConstraints(
         modifier = modifier.offset { IntOffset(x = 0, y = 0) },
         propagateMinConstraints = true,
@@ -188,26 +213,48 @@ fun TopSearch(
                 ).toDp()
         }
 
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(topInset + AppBarHeight)
-                    .background(color = MaterialTheme.colorScheme.surface),
-        )
+        val borderFade = (1f - animationProgress).coerceIn(0f, 1f)
 
         Surface(
             shape = animatedShape,
-            color = colors.containerColor,
-            contentColor = contentColorFor(colors.containerColor),
-            tonalElevation = tonalElevation,
+            color = Color.Transparent,
+            contentColor = contentColorFor(containerColor),
+            tonalElevation = if (hazeState != null) 0.dp else tonalElevation,
             modifier =
                 Modifier
                     .padding(
                         top = animatedSurfaceTopPadding,
                         start = startPadding,
                         end = endPadding,
-                    ).size(width = width, height = height),
+                    )
+                    .size(width = width, height = height)
+                    .clip(animatedShape)
+                    .then(
+                        if (hazeState != null) {
+                            Modifier.hazeEffect(
+                                state = hazeState,
+                                style = hazeStyle,
+                            ) {
+                                inputScale = HazeInputScale.Fixed(SettingsDimensions.HazeInputScaleValue)
+                            }
+                        } else {
+                            Modifier.background(containerColor)
+                        },
+                    )
+                    .then(
+                        if (showBorder && hazeState != null && borderFade > 0f) {
+                            Modifier.glassStroke(
+                                shape = animatedShape,
+                                strokeWidth = SettingsDimensions.GlassBorderThickness,
+                                topAlpha = SettingsDimensions.GlassBorderTopAlpha * borderFade,
+                                bottomAlpha = SettingsDimensions.GlassBorderBottomAlpha * borderFade,
+                                topColor = Color.White,
+                                bottomColor = Color.Black,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    ),
         ) {
             Column {
                 SearchBarInputField(
@@ -239,7 +286,6 @@ fun TopSearch(
 
                 if (animationProgress > 0) {
                     Column(Modifier.alpha(animationProgress)) {
-                        HorizontalDivider(color = colors.dividerColor)
                         content()
                     }
                 }

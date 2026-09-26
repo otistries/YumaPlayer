@@ -314,6 +314,10 @@
     <string name="pure_black">Чистый чёрный</string>
     <string name="disable_blur">Убрать эффекты размытия</string>
     <string name="disable_blur_desc">Убрать эффекты размытия во всем приложении</string>
+    <string name="blur_nav_bar">Размытие интерфейса</string>
+    <string name="blur_nav_bar_desc">Размывать контент под панелью навигации, строкой поиска и панелями</string>
+    <string name="blur_radius">Сила размытия</string>
+    <string name="blur_radius_desc">Настройка силы размытия фона парящих панелей</string>
     <string name="player">Плеер</string>
     <string name="player_slider_style">Стиль ползунка плеера</string>
     <string name="misc">Разное</string>
@@ -763,4 +767,5 @@
     <string name="cast_no_play_services_desc">Для поиска устройств Cast требуются сервисы Google Play.</string>
     <string name="cast_no_network">Нет подключения к сети</string>
     <string name="cast_no_network_desc">Подключитесь к Wi-Fi для поиска устройств Cast в локальной сети.</string>
+    <string name="voice_search">Голосовой поиск</string>
 </resources>

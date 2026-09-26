@@ -40,13 +40,19 @@
 
 </div>
 
+<p align="center">
+  <a href="https://trendshift.io/repositories/202305?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-202305" target="_blank" rel="noopener noreferrer">
+    <img src="https://trendshift.io/api/badge/trendshift/repositories/202305/daily?language=Kotlin" alt="MuwMx%2FYumaPlayer | Trendshift" width="250" height="55"/>
+  </a>
+</p>
+
 ---
 
 ## 🌟 О проекте
 
 **YumaPlayer** — это независимый открытый музыкальный плеер для Android, объединяющий каталоги и функции двух ведущих платформ со стримингом и воспроизведением локальных треков в Hi-Res качестве.
 
-Проект вырос как глубокая переработка **ArchiveTune** (с наработками от **Metrolist** и **SimpMusic**), вдохновлен механикой очередей **PixelPlayer**, сетевым взаимодействием со Spotify из **Meld** и стримингом FLAC из **Stash**. На этом фундаменте создана модульная архитектура из 19 модулей, собственная дизайн-система **YDS 2.1** и плавная жестовая модель с аппаратным ускорением.
+Проект вырос как глубокая переработка **ArchiveTune** (с наработками от **Metrolist** и **SimpMusic**), вдохновлен механикой очередей **PixelPlayer**, сетевым взаимодействием со Spotify из **Meld** и стримингом FLAC из **Stash**. На этом фундаменте создана модульная архитектура из 18 модулей, собственная дизайн-система **YDS 2.1** и плавная жестовая модель с аппаратным ускорением.
 
 Никаких платных подписок, встроенной рекламы, аналитики и закрытых трекеров. Учетные данные шифруются локально на устройстве (AES-256-GCM via Google Tink), а исходный код полностью открыт под лицензией GPL-3.0.
 
@@ -165,42 +171,20 @@ YumaPlayer переведен на множество языков благод�
 
 ---
 
-## 🏛️ Архитектура и Документация
+## 🏛️ Архитектура и Технологический стек
 
-Проект разбит на **18 независимых Gradle-модулей** по канонам Clean Architecture и UDF (Unidirectional Data Flow):
+YumaPlayer — многомодульный Android-проект, построенный по канонам Clean Architecture и однонаправленного потока данных (UDF):
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                   :app (Composition Root)                   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-       ┌───────────────────────┼───────────────────────┐
-       ▼                       ▼                       ▼
-┌──────────────┐       ┌──────────────┐       ┌────────────────┐
-│ :designsystem│       │  :database   │       │     :core      │
-│  (YDS 2.1)   │       │  (Room v36)  │       │ (Domain/Data)  │
-└──────────────┘       └──────────────┘       └───────┬────────┘
-                                                      ▼
-                                             ┌────────────────┐
-                                             │:core:innertube │
-                                             │(YouTube Music) │
-                                             └───────┬────────┘
-                                                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│ :morideobfuscator │ :moriextractor (stream extraction)      │
-├─────────────────────────────────────────────────────────────┤
-│ Integrations: :lyrics:* (x6) │ :spotifycore │ :flaccore │   │
-│ :shazamkit │ :canvas │ :lastfm                              │
-└─────────────────────────────────────────────────────────────┘
-```
+* **UI и Дизайн:** Jetpack Compose, дизайн-токены YDS 2.1, аппаратно-ускоренные Haze-оверлеи, плавная жестовая физика.
+* **Аудиодвижок:** Media3 (ExoPlayer), автономный конвейер локального аудио, Qobuz/FLAC resolver бэкбон.
+* **Данные и Хранилище:** Room ORM, шифрованные защищенные настройки (AES-256-GCM via Google Tink).
+* **Сеть и Прием данных:** Ktor/Retrofit, InnerTube (движок YouTube Music), собственные многоисточниковые скраперы лирики.
 
-📖 **Подробные гайды для разработчиков:**
-* [Обзор Архитектуры (Architecture Overview)](docs/architecture/ARCHITECTURE.md)
-* [Каталог модулей и граф зависимостей (Modules Directory)](docs/architecture/MODULES.md)
-* [Архитектурные решения (ADR Records)](docs/architecture/DECISIONS.md)
-* [Спецификация дизайн-системы (YDS 2.1 Guide)](docs/design/YDS.md) | [На русском](docs/design/YDS_ru.md)
-* [Стандарты кода и правила (Yuma Rules)](docs/development/YUMA_RULES.md)
-
+📖 **Подробная документация для разработчиков:**
+* [Обзор архитектуры и граф модулей](docs/architecture/ARCHITECTURE.md)
+* [Архитектурные решения (ADR)](docs/architecture/DECISIONS.md)
+* [Спецификация дизайн-системы (YDS 2.1)](docs/design/YDS.md)
+* [Стандарты кода и правила](docs/development/YUMA_RULES.md)
 ---
 
 ## 📥 Установка и Загрузка
@@ -291,6 +275,16 @@ YumaPlayer распространяется бесплатно, не содер�
     <code>muwmix.coffee@gmail.com</code>
   </p>
 </div>
+
+---
+
+## 📈 История звезд
+
+<p align="center">
+  <a href="https://star-history.com/#MuwMx/YumaPlayer&Date">
+    <img src="https://api.star-history.com/svg?repos=MuwMx/YumaPlayer&type=Date&theme=dark" alt="Star History Chart" width="100%" />
+  </a>
+</p>
 
 ---
 

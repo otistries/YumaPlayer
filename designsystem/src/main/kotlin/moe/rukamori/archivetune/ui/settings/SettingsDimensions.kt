@@ -123,6 +123,17 @@ object SettingsDimensions {
     val GlassBorderThickness = 0.5.dp
     val GlassStartColor = Color(0x1AFFFFFF)
     val GlassEndColor = Color(0x08FFFFFF)
+    const val ExpansionThresholdFraction = 0.15f
+    const val FullyExpandedThreshold = 0.95f
+    const val GlassBorderTopAlpha = 0.20f
+    const val GlassBorderBottomAlpha = 0.04f
+    const val BlurRadiusMin = 4f
+    const val BlurRadiusMax = 40f
+    const val BlurRadiusDefault = 24f
+    const val HazeNoiseFactor = 0.07f
+    const val HazeInputScaleValue = 0.33f
+    const val HazePureBlackTintAlpha = 0.65f
+    const val HazeDefaultTintAlpha = 0.55f
 
     // -- Bottom Sheet ------------------------------------------------------
     val BottomSheetHorizontalPadding = 16.dp

@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -85,7 +86,6 @@ import moe.rukamori.archivetune.playback.queues.LocalMixQueue
 import moe.rukamori.archivetune.ui.component.AssignTagsDialog
 import moe.rukamori.archivetune.ui.component.DefaultDialog
 import moe.rukamori.archivetune.ui.component.EditPlaylistDialog
-import moe.rukamori.archivetune.ui.component.GlassDefaults
 import moe.rukamori.archivetune.ui.component.IconButton
 import moe.rukamori.archivetune.playback.DownloadUtil
 import moe.rukamori.archivetune.ui.component.MenuState
@@ -1284,9 +1284,15 @@ fun LocalPlaylistTopBar(
     onToggleSelectAll: () -> Unit,
     onOpenSelectionMenu: () -> Unit,
     navController: NavController,
+    onEdit: (() -> Unit)? = null,
+    isEditable: Boolean = false,
 ) {
     TopAppBar(
-        colors = GlassDefaults.topAppBarColors(),
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+            ),
         title = {
             if (selection) {
                 Text(
@@ -1383,6 +1389,17 @@ fun LocalPlaylistTopBar(
                         contentDescription = null,
                     )
                 }
+                if (onEdit != null) {
+                    IconButton(
+                        onClick = onEdit,
+                        onLongClick = {},
+                    ) {
+                        Icon(
+                            painter = painterResource(if (isEditable) R.drawable.edit else R.drawable.sync),
+                            contentDescription = stringResource(R.string.edit),
+                        )
+                    }
+                }
             }
         },
     )
@@ -1407,6 +1424,8 @@ fun LocalPlaylistTopBar(
     focusRequester: FocusRequester,
     menuState: MenuState,
     navController: NavController,
+    onEdit: (() -> Unit)? = null,
+    isEditable: Boolean = false,
 ) {
     LocalPlaylistTopBar(
         selection = selection,
@@ -1445,6 +1464,8 @@ fun LocalPlaylistTopBar(
             )
         },
         navController = navController,
+        onEdit = onEdit,
+        isEditable = isEditable,
     )
 }
 
@@ -1456,6 +1477,8 @@ fun LocalPlaylistTopBar(
     showTopBarTitle: Boolean,
     menuState: MenuState,
     navController: NavController,
+    onEdit: (() -> Unit)? = null,
+    isEditable: Boolean = false,
 ) {
     LocalPlaylistTopBar(
         isSearching = searchState.isSearching,
@@ -1475,6 +1498,8 @@ fun LocalPlaylistTopBar(
         focusRequester = searchState.focusRequester,
         menuState = menuState,
         navController = navController,
+        onEdit = onEdit,
+        isEditable = isEditable,
     )
 }
 

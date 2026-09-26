@@ -1,24 +1,25 @@
 # Fork Changes — What MuwMx/YumaPlayer Changed Since the Fork
 
 This fork split from **otistries/YumaPlayer** at commit `6706087`
-("chore(lyrics): delete dead PaxSenIX integration", 2026-09-24). Since then,
-development happened on **two lines**, and this document is the map:
+("chore(lyrics): delete dead PaxSenIX integration", 2026-09-24). Development
+then happened on **two lines** which have since been **merged back together**
+into a single `main`:
 
-| Line | Where | What |
+| Line | Was | Status |
 |---|---|---|
-| `main` | `MuwMx/YumaPlayer` only | Glass/Haze UI system, app-shell refactor, artist/playlist screen redesign, duplicate checker (48 commits) |
-| `feat/offline-playlists` | branch off the fork point | Keep-offline Spotify playlist downloads + reliability fixes (13 commits) |
+| `main` | Glass/Haze UI system, app-shell refactor, artist/playlist screen redesign, duplicate checker (48 commits) | merged |
+| `feat/offline-playlists` | Keep-offline Spotify playlist downloads + reliability fixes (13 commits + docs) | merged & branch deleted |
 
-> **Heads-up for future devs:** the two lines have **not been merged yet**. The
-> `feat/offline-playlists` branch does *not* contain the glass/shell work, and
-> `main` does *not* contain the offline work. Six files were touched on both
-> lines and **will conflict on merge**: `constants/PreferenceKeys.kt`,
-> `ui/screens/library/SpotifyLikedHeaderHero.kt`,
-> `ui/screens/playlist/LocalPlaylistHeroSection.kt`,
-> `ui/screens/playlist/LocalPlaylistWiring.kt`,
-> `ui/screens/playlist/SpotifyPlaylistScreen.kt`, `res/values/strings.xml`.
-> Merge `feat/offline-playlists` → `main` to recombine; resolve conflicts by
-> keeping both the glass styling and the offline wiring in each hero/screen.
+> **Note for future devs:** the lines were recombined by merging
+> `origin/main` into `feat/offline-playlists` and fast-forwarding `main` to
+> the result. The merge had exactly 3 conflicted files (4 hunks), all the
+> same pattern — main's glass circular buttons (`yumaClickable` +
+> `yumaGlassCard`) reconciled with the keep-offline state machine inside
+> them: `SpotifyLikedHeaderHero.kt`, `LocalPlaylistHeroSection.kt`,
+> `SpotifyPlaylistScreen.kt`. Three other shared files
+> (`PreferenceKeys.kt`, `LocalPlaylistWiring.kt`, `strings.xml`)
+> auto-merged. `feat/offline-playlists` no longer exists — everything lives
+> on `main`.
 
 ---
 
@@ -41,8 +42,8 @@ Reliability fixes shipping in the same branch:
   (`cfa674b`).
 - Failed downloads retry once at startup; Spotify requests send device locale
   (`Accept-Language`).
-- CI: PR build workflow runs on `feat/**` pushes with robust artifact naming
-  (`2998905`).
+- CI: builds run on PRs and pushes to `main`; every `main` build publishes the
+  APK to a rolling `latest` GitHub release (`2998905` + release workflow).
 
 ### Verification status (supersedes the deleted E2E_REPORT.md)
 
@@ -58,7 +59,7 @@ environment, not app code.
 
 ---
 
-## 2. Glass / Haze UI system (main only)
+## 2. Glass / Haze UI system
 
 A configurable backdrop-blur "glass" layer over the whole app, built on the
 Haze library and canonicalized across screens:
@@ -83,7 +84,7 @@ Related fix history worth knowing: a bisect cycle reverted Haze usage to hunt
 a touch-freeze bug (fixed by moving the player overlay to a sibling layer,
 not `bottomBar`), and a `MainActivity` theme-effect leak was fixed.
 
-## 3. App-shell refactor (main only)
+## 3. App-shell refactor
 
 `MainActivity.kt` (~3.2k lines) was decomposed into focused hosts (commits
 W0–W6):
@@ -97,7 +98,7 @@ W0–W6):
 | `GlobalDialogsHost.kt` | All global dialogs |
 | `MainIntentRouter.kt` | Intent routing + service binding |
 
-## 4. Duplicate checker (main only, dev tool)
+## 4. Duplicate checker (dev tool)
 
 `duplicate_checker.py` (repo root): Cyrillic-safe TF-IDF duplicate detection
 for translations/playlists with markdown cleaning and two-tier thresholds.
