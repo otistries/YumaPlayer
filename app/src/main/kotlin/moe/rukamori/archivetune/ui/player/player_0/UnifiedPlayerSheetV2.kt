@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +46,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeInputScale
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import moe.rukamori.archivetune.ui.settings.SettingsDimensions
+import moe.rukamori.archivetune.ui.theme.glassStroke
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import moe.rukamori.archivetune.LocalDatabase
@@ -53,6 +61,7 @@ import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.EnableHapticFeedbackKey
 import moe.rukamori.archivetune.constants.FloatingToolbarBottomPadding
 import moe.rukamori.archivetune.constants.FloatingToolbarHeight
+import moe.rukamori.archivetune.constants.FloatingToolbarHorizontalPadding
 import moe.rukamori.archivetune.constants.MiniPlayerBottomSpacing
 import moe.rukamori.archivetune.constants.MiniPlayerHeight
 import moe.rukamori.archivetune.extensions.metadata
@@ -76,6 +85,7 @@ import moe.rukamori.archivetune.ui.state.QueueUiState
 import moe.rukamori.archivetune.ui.state.UpdateState
 import moe.rukamori.archivetune.utils.rememberPreference
 
+@OptIn(dev.chrisbanes.haze.ExperimentalHazeApi::class)
 @SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun UnifiedPlayerSheetV2(
@@ -92,6 +102,9 @@ fun UnifiedPlayerSheetV2(
     onSeekStarted: () -> Unit,
     progressMsProvider: () -> Long,
     bottomBarHeight: Dp = 0.dp,
+    hazeState: HazeState? = null,
+    pureBlack: Boolean = false,
+    blurRadius: Float = SettingsDimensions.BlurRadiusDefault,
     onExpansionFractionChanged: (Float) -> Unit = {},
     onLyricsClick: () -> Unit = {},
     onOpenQueue: () -> Unit = {},
@@ -267,7 +280,7 @@ fun UnifiedPlayerSheetV2(
 
         val sheetVisualState = rememberSheetVisualState(
             showPlayerContentArea = true,
-            collapsedStateHorizontalPadding = 12.dp,
+            collapsedStateHorizontalPadding = FloatingToolbarHorizontalPadding,
             predictiveBackCollapseProgress = predictiveBackProgress,
             currentSheetContentState = currentSheetState,
             playerContentExpansionFraction = expansionFraction,
@@ -417,6 +430,17 @@ fun UnifiedPlayerSheetV2(
                 .background(Color.Black)
         )
 
+        val containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer
+        val fixedTintAlpha = if (pureBlack) SettingsDimensions.HazePureBlackTintAlpha else SettingsDimensions.HazeDefaultTintAlpha
+        val miniHazeStyle = remember(containerColor, blurRadius, pureBlack) {
+            HazeDefaults.style(
+                backgroundColor = containerColor,
+                tint = HazeTint(containerColor.copy(alpha = fixedTintAlpha)),
+                blurRadius = blurRadius.dp,
+                noiseFactor = SettingsDimensions.HazeNoiseFactor,
+            )
+        }
+
         Box(
             modifier = modifier
                 .fillMaxSize()
@@ -449,7 +473,43 @@ fun UnifiedPlayerSheetV2(
                         shape = dynamicShape
                         clip = true
                     }
-                    .background(backgroundGradient)
+                    .then(
+                        if (hazeState != null) {
+                            Modifier.hazeEffect(
+                                state = hazeState,
+                                style = miniHazeStyle,
+                            ) {
+                                inputScale = HazeInputScale.Fixed(SettingsDimensions.HazeInputScaleValue)
+                            }
+                        } else {
+                            Modifier.background(backgroundGradient)
+                        }
+                    )
+                    .then(
+                        if (hazeState != null && expansionFraction.value > 0f) {
+                            Modifier.background(
+                                brush = backgroundGradient,
+                                alpha = (expansionFraction.value / SettingsDimensions.ExpansionThresholdFraction).coerceIn(0f, 1f)
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .then(
+                        if (expansionFraction.value < SettingsDimensions.FullyExpandedThreshold) {
+                            val borderFade = (1f - (expansionFraction.value / SettingsDimensions.ExpansionThresholdFraction)).coerceIn(0f, 1f)
+                            Modifier.glassStroke(
+                                shape = dynamicShape,
+                                strokeWidth = SettingsDimensions.GlassBorderThickness,
+                                topAlpha = SettingsDimensions.GlassBorderTopAlpha * borderFade,
+                                bottomAlpha = SettingsDimensions.GlassBorderBottomAlpha * borderFade,
+                                topColor = Color.White,
+                                bottomColor = Color.Black,
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
                 UnifiedPlayerSheetLayers(
                     state = state,

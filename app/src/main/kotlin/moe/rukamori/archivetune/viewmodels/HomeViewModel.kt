@@ -786,8 +786,6 @@ class HomeViewModel
                 previousHomePage.value = homePage.value
             }
 
-            selectedChip.value = chip
-
             chipLoadJob =
                 viewModelScope.launch(Dispatchers.IO) {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
@@ -796,6 +794,7 @@ class HomeViewModel
                     val aiContentFilterPolicy = loadAiContentFilterPolicy()
                     YouTube.home(params = chip.endpoint?.params)
                         .onSuccess { nextSections ->
+                            selectedChip.value = chip
                             homePage.value =
                                 nextSections.copy(
                                     chips = homePage.value?.chips,
@@ -813,11 +812,16 @@ class HomeViewModel
                                             )
                                         },
                                 )
+                            _allYtItems.value =
+                                similarRecommendations.value?.flatMap { it.items }.orEmpty() +
+                                    homePage.value
+                                        ?.sections
+                                        ?.flatMap { it.items }
+                                        .orEmpty()
                         }
                         .onFailure {
                             reportException(it)
-                            loadError.value = R.string.error_unknown
-                            homePage.value = homePage.value?.copy(sections = emptyList())
+                            return@launch
                         }
                 }
         }

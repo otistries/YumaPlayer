@@ -26,6 +26,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -47,6 +48,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
@@ -56,7 +59,6 @@ import moe.rukamori.archivetune.LocalPlayerConnection
 import moe.rukamori.archivetune.R
 import moe.rukamori.archivetune.constants.AppBarHeight
 import moe.rukamori.archivetune.constants.HideExplicitKey
-import moe.rukamori.archivetune.ui.component.GlassDefaults
 import moe.rukamori.archivetune.ui.component.HeaderType
 import moe.rukamori.archivetune.ui.component.HideOnScrollFAB
 import moe.rukamori.archivetune.ui.component.IconButton
@@ -138,6 +140,7 @@ fun ArtistScreen(
     }
 
     val collapseFraction by rememberCollapseFraction(lazyListState)
+    val fabHazeState = remember { HazeState() }
 
     Box(
         modifier =
@@ -160,6 +163,7 @@ fun ArtistScreen(
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            modifier = Modifier.fillMaxSize().hazeSource(fabHazeState),
         ) {
             if (uiState.artistPage == null && !uiState.showLocal) {
                 artistShimmerItem(
@@ -216,11 +220,55 @@ fun ArtistScreen(
             }
         }
 
+        TopAppBar(
+            modifier = Modifier.align(Alignment.TopCenter),
+            colors =
+                TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                ),
+            scrollBehavior = scrollBehavior,
+            title = {
+                val animatedAlpha by animateFloatAsState(
+                    targetValue = if (!transparentAppBar) 1f else 0f,
+                    animationSpec = tween(200),
+                    label = "titleAlpha",
+                )
+                Text(
+                    text = uiState.artistPage?.artist?.title ?: uiState.libraryArtist?.artist?.name ?: "",
+                    modifier = Modifier.alpha(animatedAlpha),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
+            navigationIcon = {
+                TopAppBarBackButton(navController = navController)
+            },
+            actions = {
+                IconButton(
+                    onClick = {
+                        showArtistOverflowMenu(
+                            menuState = menuState,
+                            uiState = uiState,
+                            onAction = viewModel::onAction,
+                        )
+                    },
+                    onLongClick = {},
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.more_vert),
+                        contentDescription = stringResource(R.string.more_options),
+                    )
+                }
+            },
+        )
+
         HideOnScrollFAB(
             visible = uiState.librarySongs.isNotEmpty() && uiState.libraryArtist?.artist?.isLocal != true,
             lazyListState = lazyListState,
             icon = if (showLocal) R.drawable.language else R.drawable.library_music,
             label = if (showLocal) stringResource(R.string.together_online) else stringResource(R.string.filter_library),
+            hazeState = fabHazeState,
             onClick = {
                 showLocal = showLocal.not()
                 if (!showLocal && uiState.artistPage == null) viewModel.fetchArtistsFromYTM()
@@ -235,41 +283,4 @@ fun ArtistScreen(
                     .align(Alignment.BottomCenter),
         )
     }
-
-    TopAppBar(
-        title = {
-            val animatedAlpha by animateFloatAsState(
-                targetValue = if (!transparentAppBar) 1f else 0f,
-                animationSpec = tween(200),
-                label = "titleAlpha",
-            )
-            Text(
-                text = uiState.artistPage?.artist?.title ?: uiState.libraryArtist?.artist?.name ?: "",
-                modifier = Modifier.alpha(animatedAlpha),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },
-        navigationIcon = {
-            TopAppBarBackButton(navController = navController)
-        },
-        actions = {
-            IconButton(
-                onClick = {
-                    showArtistOverflowMenu(
-                        menuState = menuState,
-                        uiState = uiState,
-                        onAction = viewModel::onAction,
-                    )
-                },
-                onLongClick = {},
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.more_vert),
-                    contentDescription = stringResource(R.string.more_options),
-                )
-            }
-        },
-        colors = GlassDefaults.topAppBarColors(),
-    )
 }

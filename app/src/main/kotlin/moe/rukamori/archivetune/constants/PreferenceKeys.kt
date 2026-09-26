@@ -68,6 +68,8 @@ val AodAmbientIntensityKey = floatPreferencesKey("aodAmbientIntensity")
 val SeekExtraSeconds = booleanPreferencesKey("seekExtraSeconds")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
 val BlurRadiusKey = floatPreferencesKey("blurRadius")
+val BlurNavBarKey = booleanPreferencesKey("blurNavBar")
+val GlassAlphaKey = floatPreferencesKey("glassAlpha")
 
 // Backdrop blur for detail pages
 val BackdropEnabledKey = booleanPreferencesKey("backdropEnabled")

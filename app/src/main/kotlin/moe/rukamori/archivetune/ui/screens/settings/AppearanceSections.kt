@@ -71,6 +71,10 @@ fun AppearanceThemeSection(
         useDarkTheme = state.useDarkTheme,
         pureBlack = state.pureBlack,
         onPureBlackChange = actions.onPureBlackChange,
+        blurNavBar = state.blurNavBar,
+        onBlurNavBarChange = actions.onBlurNavBarChange,
+        blurRadius = state.blurRadius,
+        onBlurRadiusChange = actions.onBlurRadiusChange,
         disableAnimations = state.disableAnimations,
         onDisableAnimationsChange = actions.onDisableAnimationsChange,
         splashOverlayEnabled = state.splashOverlayEnabled,
@@ -110,6 +114,10 @@ fun AppearanceThemeSection(
     useDarkTheme: Boolean,
     pureBlack: Boolean,
     onPureBlackChange: (Boolean) -> Unit,
+    blurNavBar: Boolean,
+    onBlurNavBarChange: (Boolean) -> Unit,
+    blurRadius: Float,
+    onBlurRadiusChange: (Float) -> Unit,
     disableAnimations: Boolean,
     onDisableAnimationsChange: (Boolean) -> Unit,
     splashOverlayEnabled: Boolean,
@@ -182,6 +190,29 @@ fun AppearanceThemeSection(
                 checked = pureBlack,
                 onCheckedChange = onPureBlackChange,
             )
+        }
+
+        item {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.blur_nav_bar)) },
+                description = stringResource(R.string.blur_nav_bar_desc),
+                icon = { Icon(painterResource(R.drawable.blur_on), null, modifier = Modifier.size(24.dp)) },
+                checked = blurNavBar,
+                onCheckedChange = onBlurNavBarChange,
+            )
+        }
+
+        item {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = blurNavBar,
+                enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut(),
+            ) {
+                BlurRadiusSliderItem(
+                    value = blurRadius,
+                    onValueChangeFinished = onBlurRadiusChange,
+                )
+            }
         }
 
         item {
@@ -507,6 +538,44 @@ private tailrec fun Context.findActivity(): Activity? =
         is ContextWrapper -> baseContext.findActivity()
         else -> null
     }
+
+@Composable
+private fun BlurRadiusSliderItem(
+    value: Float,
+    onValueChangeFinished: (Float) -> Unit,
+) {
+    var localValue by remember { mutableFloatStateOf(value) }
+    LaunchedEffect(value) { localValue = value }
+
+    val steps = (SettingsDimensions.BlurRadiusMax - SettingsDimensions.BlurRadiusMin).roundToInt() - 1
+    val sliderState =
+        rememberSliderState(
+            value = localValue,
+            steps = steps,
+            valueRange = SettingsDimensions.BlurRadiusMin..SettingsDimensions.BlurRadiusMax,
+            onValueChangeFinished = { onValueChangeFinished(localValue.roundToInt().toFloat()) },
+        )
+    sliderState.onValueChange = { localValue = it.roundToInt().toFloat() }
+    sliderState.value = localValue
+
+    PreferenceEntry(
+        title = { Text(stringResource(R.string.blur_radius)) },
+        description = "${stringResource(R.string.blur_radius_desc)} (${localValue.roundToInt()} dp)",
+        content = {
+            Spacer(Modifier.height(4.dp))
+            Slider(
+                state = sliderState,
+                modifier = Modifier.fillMaxWidth(),
+                track = {
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        trackCornerSize = 12.dp,
+                    )
+                },
+            )
+        },
+    )
+}
 
 @Composable
 private fun HomeBackgroundSliderItem(
