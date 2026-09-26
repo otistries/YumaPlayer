@@ -1,8 +1,8 @@
 # Offline Playlists — Keep-Offline Downloads for Spotify Content
 
 > Deep-dive for the `feat/offline-playlists` work (download availability & reliability).
-> Companion docs: [E2E_REPORT.md](../../E2E_REPORT.md) (verification evidence),
-> [REMAINING_WORK.md](../../REMAINING_WORK.md) (open items), [DECISIONS.md](DECISIONS.md) (ADR-013).
+> Companion docs: [FORK_CHANGES.md](../../FORK_CHANGES.md) (all changes since the fork,
+> verification status), [DECISIONS.md](DECISIONS.md) (ADR-013).
 
 ## What this feature does
 
@@ -98,7 +98,7 @@ Spotify GraphQL ──▶ SpotifySyncOps (sync playlists / liked songs)
 - It **intentionally skips** when download rows already exist (it is a heal,
   not a resume): after a force-stop the queue stays paused until any download
   service trigger occurs — `ExoDownloadService` start calls
-  `resumeDownloads()`. Known limitation, see REMAINING_WORK.md.
+  `resumeDownloads()`. Known limitation — see FORK_CHANGES.md "Known limitations".
 
 ### Keep-offline real-file export
 
@@ -157,22 +157,23 @@ Spotify GraphQL ──▶ SpotifySyncOps (sync playlists / liked songs)
 | `STATE_REMOVING` | 5 |
 | `STATE_RESTARTING` | 7 |
 
-(Earlier notes in REMAINING_WORK.md used a different mapping — this table is
+(Earlier scratch notes used a different mapping — this table is
 the authoritative one; it matches media3 `Download.STATE_*`.)
 
 ## Testing notes
 
 - Unit: `OfflineSyncLogicTest` covers completeness math. UI-relevant tests:
-  `*OfflineSync*`, `*HeaderDownload*`, `*Downloads*` (some unrelated
-  ViewModel/Lyrics tests fail on a clean tree — see REMAINING_WORK.md, they
-  are pre-existing and not from this branch).
-- E2E recipe + DB-poll commands are in `E2E_REPORT.md` (media3 states are
-  observable via `databases/song.db` → `ExoPlayerDownloads` table).
+  `*OfflineSync*`, `*HeaderDownload*`, `*Downloads*`. Some unrelated
+  ViewModel/Lyrics tests fail on a clean tree — pre-existing, not from this
+  branch (see FORK_CHANGES.md).
+- E2E verification status (DB polls, ordering proof, bot-wall caveat) is
+  summarized in FORK_CHANGES.md; media3 states are observable via
+  `databases/song.db` → `ExoPlayerDownloads` table.
 - BotGuard/proxy: verify `Minted token for <id>` appears in logs when YouTube
   is only reachable via proxy; without it downloads sit at `bytes_downloaded=0`.
 
 ## Where to pick up next
 
-See `REMAINING_WORK.md`. Headline items: auto-resume after force-stop,
-account sign-in / residential IP for the final network leg in emulators, and
-surfacing export failures in UI instead of log-only.
+Headline items (tracked in FORK_CHANGES.md "Known limitations"): auto-resume
+after force-stop, account sign-in / residential IP for the final network leg
+in emulators, and surfacing export failures in UI instead of log-only.
