@@ -19,6 +19,7 @@ Each record captures the context, decision, rationale, and consequences of a key
 - **[ADR-010](#adr-010-120fps-gesture-kinematics--player-sheet-layer-architecture)** — 120fps Gesture Kinematics & Player Sheet Layer Architecture
 - **[ADR-011](#adr-011-spotify-sync-architecture)** — Spotify Sync Architecture
 - **[ADR-012](#adr-012-room-persistence-extracted-into-database-module)** — Room Persistence Extracted into `:database` Module
+- **[ADR-013](#adr-013-keep-offline-playlists--sequential-media3-downloads)** — Keep-Offline Playlists & Sequential media3 Downloads
 
 ---
 
@@ -166,3 +167,15 @@ Each record captures the context, decision, rationale, and consequences of a key
 - **Consequences:**
   - *Positive:* Library storage builds and versions independently of UI/playback; schema snapshots are pinned per Room version via KSP.
   - *Negative:* `fallbackToDestructiveMigration` and `UniversalMigration` reconciliation now span a module boundary, so schema mistakes surface as cross-module migration failures (see `LEGACY_WARNING.md` §B2).
+
+---
+
+## ADR-013: Keep-Offline Playlists & Sequential media3 Downloads
+
+- **Status:** Accepted
+- **Context:** Remote Spotify playlists and liked songs were streaming-only; users on metered or unreliable networks had no way to pin them for offline playback, and the previous download path downloaded tracks in parallel with no ordering guarantee.
+- **Decision:** Introduce a per-playlist `keepOffline` Room flag (DataStore `SpotifyLikedKeepOfflineKey` for liked songs). Toggling it enqueues every track as a media3 `DownloadRequest` via a single funnel (`SpotifySyncOps.enqueueKeepOfflineDownloads`), with `DEFAULT_MAX_PARALLEL_DOWNLOADS = 1` in `DownloadUtil` enforcing strict top-down 1-by-1 downloads in playlist row order. Startup self-heal (`OfflineResyncer`) re-enqueues missing tracks; a targeted per-playlist sync (`syncSingleSpotifyPlaylist`) + `OfflineSyncWorker` keeps the queue current as Spotify content changes; `PlaylistOfflineStatus` is the single source of truth for completeness. Optional real-file export (`ExportKeepOfflineKey` → `FlacDownloader`) runs on the `STATE_COMPLETED` transition. BotGuard poToken HTTP now honors `YouTube.proxy` (fixes silent 0-byte download stalls behind blocked networks).
+- **Consequences:**
+  - *Positive:* Deterministic, bandwidth-friendly downloads; playlists self-heal after crashes/reinstalls; per-track badges, wavy progress, and a floating toolbar expose queue state; sequential gate also serializes InnerTube fetches, reducing bot-flag pressure.
+  - *Negative:* Large playlists complete strictly serially (slower wall-clock than parallel); raising `DEFAULT_MAX_PARALLEL_DOWNLOADS` silently degrades top-down ordering; after a force-stop the queue stays paused until any download-service trigger (no auto-resume yet).
+- **Deep dive:** [OFFLINE_PLAYLISTS.md](OFFLINE_PLAYLISTS.md) — data flow, key files, gotchas, test recipe.
