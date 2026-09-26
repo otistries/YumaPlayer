@@ -125,3 +125,6 @@ deploy*.py
 /opencode.json
 opencode.json
 /.omo/
+
+# local test databases
+/*.db
